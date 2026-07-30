@@ -1,29 +1,61 @@
-import { ScrollView, Text, View, Pressable, Image } from "react-native";
+import { ScrollView, Text, View, Pressable, ActivityIndicator } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
+import { trpc } from "@/lib/trpc";
+import { useRatings } from "@/hooks/use-ratings";
 
 export default function ProfileScreen() {
   const colors = useColors();
+  const currentUser = trpc.auth.me.useQuery();
+  const { getAverageRating } = useRatings();
+  const averageRating = currentUser.data ? getAverageRating(currentUser.data.id) : null;
 
-  // Mock user data - será reemplazado con datos reales
-  const user = {
-    name: "Juan Pérez",
-    email: "juan@example.com",
-    phone: "+56 9 1234 5678",
-    rating: 4.8,
-    trips: 12,
-    joinDate: "Enero 2024",
-    bio: "Viajero apasionado por conocer nuevos lugares",
-  };
+  const logoutMutation = trpc.auth.logout.useMutation();
 
-  const handleLogout = () => {
-    // Implementar logout
-    console.log("Logout");
+  const handleLogout = async () => {
+    try {
+      await logoutMutation.mutateAsync();
+      console.log("Logout successful");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   const handleEditProfile = () => {
-    // Navegar a editar perfil
     console.log("Edit profile");
+  };
+
+  if (currentUser.isLoading) {
+    return (
+      <ScreenContainer className="p-4">
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (!currentUser.data) {
+    return (
+      <ScreenContainer className="p-4">
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <Text style={{ color: colors.muted }}>No hay datos de usuario</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  const user = {
+    name: currentUser.data.name || "Usuario",
+    email: currentUser.data.email || "No disponible",
+    phone: "+56 9 1234 5678",
+    rating: averageRating?.data?.averageRating || 0,
+    trips: averageRating?.data?.totalRatings || 0,
+    joinDate: new Date(currentUser.data.createdAt).toLocaleDateString("es-ES", {
+      year: "numeric",
+      month: "long",
+    }),
+    bio: "Viajero de Adeo",
   };
 
   return (
@@ -53,7 +85,7 @@ export default function ProfileScreen() {
 
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
             <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "bold" }}>
-              ★ {user.rating}
+              ★ {user.rating.toFixed(1)}
             </Text>
             <Text style={{ color: colors.muted, fontSize: 14, marginLeft: 8 }}>
               ({user.trips} viajes)
@@ -125,9 +157,11 @@ export default function ProfileScreen() {
               alignItems: "center",
             }}
           >
-            <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>Calificación</Text>
+            <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>
+              Calificación
+            </Text>
             <Text style={{ color: colors.primary, fontSize: 24, fontWeight: "bold" }}>
-              {user.rating}
+              {user.rating.toFixed(1)}
             </Text>
           </View>
         </View>
@@ -165,7 +199,9 @@ export default function ProfileScreen() {
             },
           ]}
         >
-          <Text style={{ color: colors.error, fontSize: 16, fontWeight: "600" }}>Cerrar Sesión</Text>
+          <Text style={{ color: colors.error, fontSize: 16, fontWeight: "600" }}>
+            Cerrar Sesión
+          </Text>
         </Pressable>
       </ScrollView>
     </ScreenContainer>

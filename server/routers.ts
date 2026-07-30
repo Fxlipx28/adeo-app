@@ -3,6 +3,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { tripsRouter } from "./routers/trips";
+import { bookingsRouter } from "./routers/bookings";
+import { ratingsRouter } from "./routers/ratings";
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -19,6 +21,8 @@ export const appRouter = router({
   }),
 
   trips: tripsRouter,
+  bookings: bookingsRouter,
+  ratings: ratingsRouter,
 });
 
 export type AppRouter = typeof appRouter;

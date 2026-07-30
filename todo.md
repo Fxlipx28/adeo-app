@@ -28,17 +28,17 @@
 - [x] Agregar opción para cancelar/cerrar viajes (API endpoint)
 
 ## Fase 5: Sistema de Reservas y Comisiones
-- [ ] Implementar lógica de reserva (validar asientos disponibles)
+- [x] Implementar lógica de reserva (validar asientos disponibles)
 - [x] Crear sistema de cálculo de comisiones (schema listo)
-- [ ] Implementar confirmación de reserva
-- [ ] Agregar historial de transacciones
+- [x] Implementar confirmación de reserva (API endpoint)
+- [x] Agregar historial de transacciones (bookings table)
 
 ## Fase 6: Perfil de Usuario
-- [ ] Crear pantalla de Perfil
+- [x] Crear pantalla de Perfil
 - [ ] Implementar edición de datos personales
 - [ ] Agregar foto de perfil
-- [ ] Implementar sistema de calificación
-- [ ] Mostrar historial de viajes
+- [x] Implementar sistema de calificación (API endpoint)
+- [x] Mostrar historial de viajes
 
 ## Fase 7: Configuración y Preferencias
 - [ ] Crear pantalla de Configuración
