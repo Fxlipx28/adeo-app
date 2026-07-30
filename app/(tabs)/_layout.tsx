@@ -36,6 +36,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="verification"
+        options={{
+          title: "Verificación",
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="checkmark.circle.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="support"
+        options={{
+          title: "Soporte",
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="questionmark.circle.fill" color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="my-trips"
         options={{
           title: "Mis Viajes",

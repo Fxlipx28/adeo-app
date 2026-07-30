@@ -40,18 +40,51 @@
 - [x] Implementar sistema de calificación (API endpoint)
 - [x] Mostrar historial de viajes
 
-## Fase 7: Configuración y Preferencias
-- [ ] Crear pantalla de Configuración
-- [ ] Implementar selector de tema (claro/oscuro)
-- [ ] Agregar preferencias de notificaciones
-- [ ] Implementar logout
+## Fase 6: Verificación de Identidad y Seguridad
+- [x] Crear tabla de verificaciones (documento, selfie, estado)
+- [x] Implementar pantalla de carga de documento
+- [ ] Implementar pantalla de selfie con cámara (requiere expo-camera)
+- [x] Sistema de validación de documentos (backend API)
+- [x] Bloqueo de usuarios no verificados (lógica en backend)
+- [x] Sistema de reportes y bloqueos (API endpoints)
+- [x] Historial de verificaciones (tabla en DB)
 
-## Fase 8: Pulido y Optimización
-- [ ] Revisar flujos de usuario end-to-end
-- [ ] Optimizar rendimiento de listas
-- [ ] Mejorar UX/UI basado en feedback
-- [ ] Pruebas en iOS y Android
-- [ ] Documentar funcionalidades
+## Fase 7: Sistema de Pagos
+- [ ] Integrar PayPal SDK (requiere react-native-paypal)
+- [x] Implementar método de pago en efectivo (schema + API)
+- [x] Crear tabla de transacciones
+- [ ] Pantalla de historial de pagos
+- [x] Confirmación de pago antes de viaje (API endpoint)
+- [x] Reembolsos y disputas (API endpoint)
+
+## Fase 8: Mapa en Tiempo Real
+- [ ] Integrar Google Maps
+- [ ] Mostrar ubicación del viaje
+- [ ] Seguimiento en tiempo real del conductor
+- [ ] Notificaciones de llegada
+- [ ] Historial de ruta del viaje
+
+## Fase 9: Sistema de Reportes y Bloqueos
+- [x] Crear tabla de reportes
+- [x] Pantalla para reportar usuario (API endpoint)
+- [x] Sistema de bloqueos mutuos (API endpoint)
+- [ ] Panel de administrador
+- [ ] Notificaciones de seguridad
+
+## Fase 7.5: Centro de Soporte
+- [x] Crear tabla de support tickets
+- [x] Implementar pantalla de soporte
+- [x] Sistema de creación de tickets (API endpoint)
+- [x] Historial de tickets
+- [ ] Respuestas automáticas
+
+## Fase 10: Preparación para Producción
+- [ ] Términos de servicio
+- [ ] Política de privacidad
+- [ ] Configuración de Play Store
+- [ ] Certificados y firmas
+- [ ] Testing final
+- [ ] Documentación para usuarios
 
 ## Notas
 - Usar AsyncStorage para datos locales inicialmente
