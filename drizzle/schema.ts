@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { double, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -38,6 +38,11 @@ export const trips = mysqlTable("trips", {
   totalSeats: int("totalSeats").notNull(),
   availableSeats: int("availableSeats").notNull(),
   pricePerSeat: int("pricePerSeat").notNull(), // En unidades mínimas de la moneda (CLP no tiene decimales)
+  // Coordenadas (para el mapa). Nulas en viajes antiguos.
+  originLat: double("originLat"),
+  originLng: double("originLng"),
+  destLat: double("destLat"),
+  destLng: double("destLng"),
   countryCode: varchar("countryCode", { length: 2 }).default("CL").notNull(),
   currency: varchar("currency", { length: 3 }).default("CLP").notNull(),
   distanceKm: int("distanceKm").default(0).notNull(), // Base del tope de costo compartido
@@ -95,6 +100,7 @@ export const userProfiles = mysqlTable("userProfiles", {
   phone: varchar("phone", { length: 20 }),
   bio: text("bio"),
   countryCode: varchar("countryCode", { length: 2 }).default("CL").notNull(),
+  photoUrl: text("photoUrl"), // Foto de perfil (se ve en los pines del mapa)
   emergencyContactName: varchar("emergencyContactName", { length: 120 }),
   emergencyContactPhone: varchar("emergencyContactPhone", { length: 20 }),
   userType: mysqlEnum("userType", ["passenger", "driver", "both"]).default("passenger").notNull(),

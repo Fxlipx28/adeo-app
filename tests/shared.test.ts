@@ -64,3 +64,38 @@ describe("Países", () => {
     expect(getCountry("cl").currency).toBe("CLP");
   });
 });
+
+import { groupByDestination, type MapTrip } from "../shared/mapgroups";
+
+describe("Agrupar viajes por destino (mapa)", () => {
+  const mk = (id: number, destLat: number, destLng: number, name: string, seats = 2): MapTrip => ({
+    id,
+    origin: "Santiago",
+    destination: "Viña del Mar, Valparaíso",
+    originLat: -33.45,
+    originLng: -70.67,
+    destLat,
+    destLng,
+    availableSeats: seats,
+    driver: { firstName: name, photoUrl: null },
+  });
+
+  it("junta viajes al mismo lugar; la foto es la del primer conductor y suma +N", () => {
+    const groups = groupByDestination([mk(7, -33.02, -71.55, "Ana"), mk(3, -33.03, -71.56, "Beto"), mk(9, -33.01, -71.54, "Cami")]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].first.firstName).toBe("Beto"); // id más bajo = primero
+    expect(groups[0].extra).toBe(2);
+    expect(groups[0].label).toBe("Viña del Mar");
+  });
+
+  it("separa destinos distintos y omite viajes llenos o sin coordenadas", () => {
+    const groups = groupByDestination([
+      mk(1, -33.02, -71.55, "A"),
+      mk(2, -36.83, -73.05, "B"),
+      mk(3, -36.83, -73.05, "C", 0),
+      { ...mk(4, 0, 0, "D"), destLat: null, destLng: null },
+    ]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((g) => g.extra)).toEqual([0, 0]);
+  });
+});

@@ -3,10 +3,30 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, eq, gte, notInArray } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { blocks, trips } from "../../drizzle/schema";
+import { blocks, trips, userProfiles, users } from "../../drizzle/schema";
 import { COUNTRY_CODES, getCountry, isFutureDeparture, isLaunched, localNowStamp } from "../../shared/countries";
 import { maxPricePerSeat, tripTotalCost } from "../../shared/pricing";
 import { assertVerified } from "../lib/guards";
+import { routeDistanceKm } from "../lib/geo";
+
+type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+
+/** Agrega a cada viaje los datos públicos del conductor: primer nombre, foto y calificación. */
+async function withDrivers<T extends { driverId: number }>(db: Db, rows: T[]) {
+  const ids = [...new Set(rows.map((r) => r.driverId))];
+  const info = new Map<number, { firstName: string; photoUrl: string | null; rating: number | null; totalTrips: number }>();
+  for (const id of ids) {
+    const u = (await db.select().from(users).where(eq(users.id, id)).limit(1))[0];
+    const p = (await db.select().from(userProfiles).where(eq(userProfiles.userId, id)).limit(1))[0];
+    info.set(id, {
+      firstName: u?.name?.trim().split(" ")[0] || "Conductor",
+      photoUrl: p?.photoUrl ?? null,
+      rating: p?.averageRating != null ? p.averageRating / 10 : null,
+      totalTrips: p?.totalTrips ?? 0,
+    });
+  }
+  return rows.map((r) => ({ ...r, driver: info.get(r.driverId)! }));
+}
 
 const dateRe = /^\d{4}-\d{2}-\d{2}$/;
 const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -60,19 +80,21 @@ export const tripsRouter = router({
       // Búsqueda flexible por texto (acentos/mayúsculas) y que no salgan viajes ya partidos hoy
       const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
       const now = localNowStamp(country);
-      return results.filter((t) => {
+      const filtered = results.filter((t) => {
         if (`${t.departureDate} ${t.departureTime}` <= now) return false;
         if (input?.origin && !norm(t.origin).includes(norm(input.origin))) return false;
         if (input?.destination && !norm(t.destination).includes(norm(input.destination))) return false;
         return true;
       });
+      return withDrivers(db, filtered);
     }),
 
   getById: publicProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
     const db = await getDb();
     if (!db) return null;
     const rows = await db.select().from(trips).where(eq(trips.id, input.id)).limit(1);
-    return rows[0] ?? null;
+    if (!rows[0]) return null;
+    return (await withDrivers(db, rows))[0];
   }),
 
   /** Tope de precio para mostrarlo en el formulario de publicación. */
@@ -108,7 +130,11 @@ export const tripsRouter = router({
         departureTime: z.string().regex(timeRe),
         totalSeats: z.number().int().min(1).max(8),
         pricePerSeat: z.number().int().min(0),
-        distanceKm: z.number().int().min(1).max(5000),
+        // El conductor elige lugares del mapa; la distancia la calcula el servidor.
+        originLat: z.number().min(-90).max(90),
+        originLng: z.number().min(-180).max(180),
+        destLat: z.number().min(-90).max(90),
+        destLng: z.number().min(-180).max(180),
         tollsAmount: z.number().int().min(0).default(0),
         countryCode: z.enum(COUNTRY_CODES as [string, ...string[]]).default("CL"),
         description: z.string().max(1000).optional(),
@@ -130,7 +156,13 @@ export const tripsRouter = router({
 
       await assertVerified(db, ctx.user.id, "Debes verificar tu identidad para publicar viajes.");
 
-      const cap = maxPricePerSeat(input);
+      // Distancia real por carretera (no se confía en lo que diga el cliente)
+      const { km: distanceKm } = await routeDistanceKm(
+        { lat: input.originLat, lng: input.originLng },
+        { lat: input.destLat, lng: input.destLng },
+      );
+
+      const cap = maxPricePerSeat({ ...input, distanceKm });
       if (input.pricePerSeat > cap) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -148,7 +180,11 @@ export const tripsRouter = router({
         totalSeats: input.totalSeats,
         availableSeats: input.totalSeats,
         pricePerSeat: input.pricePerSeat,
-        distanceKm: input.distanceKm,
+        distanceKm,
+        originLat: input.originLat,
+        originLng: input.originLng,
+        destLat: input.destLat,
+        destLng: input.destLng,
         tollsAmount: input.tollsAmount,
         countryCode: country.code,
         currency: country.currency,

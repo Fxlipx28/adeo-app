@@ -1,4 +1,6 @@
-import { ScrollView, Text, View, Pressable, ActivityIndicator } from "react-native";
+import { ScrollView, Text, View, Pressable, ActivityIndicator, Alert } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { Avatar } from "@/components/avatar";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -11,6 +13,26 @@ export default function ProfileScreen() {
   const averageRating = currentUser.data ? getAverageRating(currentUser.data.id) : null;
 
   const logoutMutation = trpc.auth.logout.useMutation();
+
+  const utils = trpc.useUtils();
+  const myProfile = trpc.profile.mine.useQuery(undefined, { enabled: !!currentUser.data });
+  const setPhoto = trpc.profile.setPhoto.useMutation({
+    onSuccess: () => utils.profile.mine.invalidate(),
+    onError: (e) => Alert.alert("Error", e.message),
+  });
+
+  const changePhoto = async () => {
+    const r = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+    const asset = r.canceled ? null : r.assets?.[0];
+    if (!asset?.base64) return;
+    setPhoto.mutate({ mimeType: asset.mimeType === "image/png" ? "image/png" : "image/jpeg", base64: asset.base64 });
+  };
 
   const handleLogout = async () => {
     try {
@@ -63,21 +85,12 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
         {/* Header */}
         <View style={{ alignItems: "center", marginBottom: 24 }}>
-          <View
-            style={{
-              width: 100,
-              height: 100,
-              borderRadius: 50,
-              backgroundColor: colors.primary,
-              justifyContent: "center",
-              alignItems: "center",
-              marginBottom: 12,
-            }}
-          >
-            <Text style={{ color: "#ffffff", fontSize: 40, fontWeight: "bold" }}>
-              {user.name.charAt(0)}
+          <Pressable onPress={changePhoto} style={{ marginBottom: 12 }}>
+            <Avatar name={user.name} photoUrl={myProfile.data?.photoUrl} size={100} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontSize: 12, textAlign: "center", marginTop: 6 }}>
+              {setPhoto.isPending ? "Subiendo…" : "Cambiar foto"}
             </Text>
-          </View>
+          </Pressable>
 
           <Text style={{ color: colors.foreground, fontSize: 22, fontWeight: "bold" }}>
             {user.name}

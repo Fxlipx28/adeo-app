@@ -58,8 +58,8 @@
 - [x] Reembolsos y disputas (API endpoint)
 
 ## Fase 8: Mapa en Tiempo Real
-- [ ] Integrar Google Maps
-- [ ] Mostrar ubicación del viaje
+- [x] Mapa interactivo con zoom/arrastre (web: Leaflet + OpenStreetMap; nativo: react-native-maps)
+- [x] Mostrar ubicación del viaje (pines por destino con foto del primer conductor y contador +N)
 - [ ] Seguimiento en tiempo real del conductor
 - [ ] Notificaciones de llegada
 - [ ] Historial de ruta del viaje
@@ -102,7 +102,8 @@
 - [x] Compartir viaje con familiar (24 h) y botón SOS
 - [x] i18n es/en
 - [ ] Pasarela de pago real para Chile (Webpay/Flow/Mercado Pago)
-- [ ] Mapas y distancia automática (hoy la distancia la ingresa el conductor)
+- [x] Distancia automática por carretera (OSRM) y búsqueda de lugares (Nominatim)
+- [ ] Proveedor de mapas/geocoding de producción (tiles OSM y Nominatim públicos son solo para demo)
 - [ ] Datos del vehículo, licencia, SOAP y revisión técnica del conductor
 - [ ] Panel admin para aprobar verificaciones
 - [ ] Revisión legal (ver docs/LEGAL_CHILE.md)

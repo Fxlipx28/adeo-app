@@ -2,6 +2,7 @@ import { ActivityIndicator, Alert, ScrollView, Text, View, Pressable } from "rea
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScreenContainer } from "@/components/screen-container";
+import { Avatar } from "@/components/avatar";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { t } from "@/lib/i18n";
@@ -86,6 +87,16 @@ export default function TripDetailScreen() {
           {row(t("price"), `${formatMoney(data.pricePerSeat, data.countryCode)} ${t("perSeat")}`, true)}
           {row(t("seats"), String(data.availableSeats))}
           {data.distanceKm > 0 && row("Distancia", `${data.distanceKm} km`)}
+          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+            <Avatar name={data.driver.firstName} photoUrl={data.driver.photoUrl} size={40} />
+            <View style={{ marginLeft: 10 }}>
+              <Text style={{ color: colors.foreground, fontWeight: "700" }}>{data.driver.firstName}</Text>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>
+                {data.driver.rating ? `⭐ ${data.driver.rating.toFixed(1)} · ` : ""}
+                {data.driver.totalTrips} viajes
+              </Text>
+            </View>
+          </View>
           {!!data.description && (
             <Text style={{ color: colors.muted, fontSize: 14, marginTop: 8 }}>{data.description}</Text>
           )}
