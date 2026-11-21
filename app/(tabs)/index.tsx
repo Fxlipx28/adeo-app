@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { currentCountry, deviceCountryNotLaunched, t } from "@/lib/i18n";
 import { formatMoney } from "@/shared/countries";
 import { groupByDestination } from "@/shared/mapgroups";
+import { IS_DEMO } from "@/lib/demo-link";
 
 export default function HomeScreen() {
   const colors = useColors();
@@ -32,6 +33,7 @@ export default function HomeScreen() {
         <View style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 }}>
           <Text style={{ color: colors.foreground, fontSize: 26, fontWeight: "800" }}>Adeo</Text>
           <Text style={{ color: colors.muted, fontSize: 14 }}>{t("tagline")}</Text>
+          {IS_DEMO && <Text style={{ color: "#c2410c", fontSize: 12, marginTop: 4 }}>Demo con datos de ejemplo · no se guarda nada</Text>}
         </View>
 
         {deviceCountryNotLaunched() && (

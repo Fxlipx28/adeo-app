@@ -129,6 +129,8 @@ const config: ExpoConfig = {
     ],
   ],
   experiments: {
+    // Para publicar en GitHub Pages: EXPO_BASE_URL=/adeo-app
+    baseUrl: process.env.EXPO_BASE_URL || undefined,
     typedRoutes: true,
     reactCompiler: true,
   },

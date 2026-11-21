@@ -42,7 +42,7 @@ function buildPin(opts: { name: string; photoUrl: string | null; extra: number; 
   const ring = document.createElement("div");
   ring.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:#fff;box-sizing:border-box;padding:3px;box-shadow:0 4px 14px rgba(15,23,42,.3);border:${opts.selected ? "4px solid #f97316" : "3px solid #0a7ea4"}`;
 
-  const url = opts.photoUrl && /^(https?:)?\//.test(opts.photoUrl) ? opts.photoUrl : null;
+  const url = opts.photoUrl && /^(https?:\/\/|\/|data:image\/)/.test(opts.photoUrl) ? opts.photoUrl : null;
   if (url) {
     const img = document.createElement("img");
     img.src = url;

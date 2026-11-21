@@ -16,6 +16,7 @@
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "android": "expo start --android",
     "ios": "expo start --ios",
+    "build:pages": "EXPO_PUBLIC_DEMO=1 EXPO_BASE_URL=/adeo-app expo export --platform web --output-dir dist-pages",
     "qr": "node scripts/generate_qr.mjs"
   },
   "dependencies": {

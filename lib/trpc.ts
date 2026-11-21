@@ -4,6 +4,7 @@ import superjson from "superjson";
 import type { AppRouter } from "@/server/routers";
 import { getApiBaseUrl } from "@/constants/oauth";
 import * as Auth from "@/lib/_core/auth";
+import { IS_DEMO, demoLink } from "@/lib/demo-link";
 
 /**
  * tRPC React client for type-safe API calls.
@@ -19,6 +20,7 @@ export const trpc = createTRPCReact<AppRouter>();
  * Call this once in your app's root layout.
  */
 export function createTRPCClient() {
+  if (IS_DEMO) return trpc.createClient({ links: [demoLink] });
   return trpc.createClient({
     links: [
       httpBatchLink({
