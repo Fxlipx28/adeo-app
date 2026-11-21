@@ -1,4 +1,6 @@
-import { ScrollView, Text, View, Pressable, ActivityIndicator, Alert } from "react-native";
+import { ScrollView, Text, TextInput, View, Pressable, ActivityIndicator, Alert, Platform } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { isValidRut } from "@/shared/rut";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -13,18 +15,75 @@ export default function VerificationScreen() {
   const verificationStatus = trpc.verifications.getStatus.useQuery();
   const submitVerification = trpc.verifications.submitVerification.useMutation();
 
+  type Pick = { uri: string; base64: string; mimeType: "image/jpeg" | "image/png" };
+  const [docPhoto, setDocPhoto] = useState<Pick | null>(null);
+  const [selfiePhoto, setSelfiePhoto] = useState<Pick | null>(null);
+  const [busy, setBusy] = useState(false);
+  const uploadImage = trpc.verifications.uploadImage.useMutation();
+
+  const takePhoto = async (kind: "document" | "selfie") => {
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ["images"],
+      quality: 0.6,
+      base64: true,
+      cameraType: kind === "selfie" ? ImagePicker.CameraType.front : ImagePicker.CameraType.back,
+    };
+    let result: ImagePicker.ImagePickerResult;
+    if (Platform.OS === "web") {
+      result = await ImagePicker.launchImageLibraryAsync(options);
+    } else {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permiso necesario", "Activa el acceso a la cámara para verificar tu identidad.");
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync(options);
+    }
+    const asset = result.canceled ? null : result.assets?.[0];
+    if (!asset?.base64) return;
+    const photo: Pick = {
+      uri: asset.uri,
+      base64: asset.base64,
+      mimeType: asset.mimeType === "image/png" ? "image/png" : "image/jpeg",
+    };
+    if (kind === "document") setDocPhoto(photo);
+    else setSelfiePhoto(photo);
+  };
+
   const handleSubmit = async () => {
-    if (!documentNumber.trim()) {
+    const doc = documentNumber.trim();
+    if (!doc) {
       Alert.alert("Error", "Por favor ingresa el número de documento");
       return;
     }
-
-    // TODO: Implementar carga de imágenes
-    // Por ahora, mostrar mensaje
-    Alert.alert(
-      "Próximo paso",
-      "Necesitas cargar fotos del documento y una selfie. Esta funcionalidad estará disponible pronto."
-    );
+    if (documentType === "id_card" && !isValidRut(doc)) {
+      Alert.alert("RUT inválido", "Revisa el RUT (ej: 12.345.678-5).");
+      return;
+    }
+    if (!docPhoto || !selfiePhoto) {
+      Alert.alert("Faltan fotos", "Necesitamos una foto de tu documento y una selfie.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const [d, f] = await Promise.all([
+        uploadImage.mutateAsync({ kind: "document", mimeType: docPhoto.mimeType, base64: docPhoto.base64 }),
+        uploadImage.mutateAsync({ kind: "selfie", mimeType: selfiePhoto.mimeType, base64: selfiePhoto.base64 }),
+      ]);
+      const res = await submitVerification.mutateAsync({
+        documentType,
+        documentNumber: doc,
+        countryCode: "CL",
+        documentImageUrl: d.url,
+        selfieImageUrl: f.url,
+      });
+      Alert.alert("Listo", res.message);
+      verificationStatus.refetch();
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "No se pudo enviar la verificación");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (verificationStatus.isLoading) {
@@ -115,7 +174,7 @@ export default function VerificationScreen() {
           </View>
         )}
 
-        {!isVerified && !isPending && !isRejected && (
+        {!isVerified && !isPending && (
           <>
             {/* Document Type Selection */}
             <View style={{ marginBottom: 20 }}>
@@ -157,7 +216,12 @@ export default function VerificationScreen() {
               <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "600", marginBottom: 8 }}>
                 Número de Documento
               </Text>
-              <View
+              <TextInput
+                value={documentNumber}
+                onChangeText={setDocumentNumber}
+                placeholder="Ingresa tu número de documento"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
                 style={{
                   backgroundColor: colors.background,
                   borderRadius: 12,
@@ -165,12 +229,38 @@ export default function VerificationScreen() {
                   borderColor: colors.border,
                   paddingHorizontal: 16,
                   paddingVertical: 12,
+                  color: colors.foreground,
+                  fontSize: 14,
                 }}
-              >
-                <Text style={{ color: colors.foreground, fontSize: 14 }}>
-                  {documentNumber || "Ingresa tu número de documento"}
-                </Text>
-              </View>
+              />
+            </View>
+
+            {/* Photos */}
+            <View style={{ marginBottom: 20 }}>
+              {(
+                [
+                  ["document", "📄 Foto del documento", docPhoto],
+                  ["selfie", "🤳 Selfie", selfiePhoto],
+                ] as const
+              ).map(([kind, label, photo]) => (
+                <Pressable
+                  key={kind}
+                  onPress={() => takePhoto(kind)}
+                  style={{
+                    backgroundColor: colors.surface,
+                    borderRadius: 12,
+                    padding: 16,
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: photo ? colors.success : colors.border,
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 14, fontWeight: "500" }}>
+                    {photo ? "✓ " : ""}
+                    {label}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
 
             {/* Info Box */}
@@ -196,18 +286,19 @@ export default function VerificationScreen() {
             {/* Submit Button */}
             <Pressable
               onPress={handleSubmit}
+              disabled={busy}
               style={({ pressed }) => [
                 {
                   backgroundColor: colors.primary,
                   borderRadius: 12,
                   padding: 16,
                   alignItems: "center",
-                  opacity: pressed ? 0.8 : 1,
+                  opacity: pressed || busy ? 0.6 : 1,
                 },
               ]}
             >
               <Text style={{ color: "#ffffff", fontSize: 16, fontWeight: "600" }}>
-                Continuar con Verificación
+                {busy ? "Enviando…" : "Enviar verificación"}
               </Text>
             </Pressable>
           </>

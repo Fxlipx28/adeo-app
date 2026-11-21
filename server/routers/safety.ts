@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { randomBytes } from "node:crypto";
+import { TRPCError } from "@trpc/server";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { reports, blocks, supportTickets } from "../../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { reports, blocks, supportTickets, trips, bookings, tripShares, userProfiles, users } from "../../drizzle/schema";
+import { eq, and, gt } from "drizzle-orm";
+import { getCountry } from "../../shared/countries";
 
 export const safetyRouter = router({
   /**
@@ -105,8 +108,9 @@ export const safetyRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        // TODO: Usar delete en lugar de update cuando esté disponible
-        // await db.delete(blocks).where(...);
+        await db
+          .delete(blocks)
+          .where(and(eq(blocks.userId, ctx.user.id), eq(blocks.blockedUserId, input.blockedUserId)));
 
         return { success: true, message: "Usuario desbloqueado" };
       } catch (error) {
@@ -194,7 +198,7 @@ export const safetyRouter = router({
   /**
    * Obtener reportes (solo admin)
    */
-  getReports: protectedProcedure
+  getReports: adminProcedure
     .input(
       z.object({
         status: z.enum(["open", "investigating", "resolved", "dismissed"]).optional(),
@@ -204,8 +208,6 @@ export const safetyRouter = router({
       try {
         const db = await getDb();
         if (!db) return [];
-
-        // TODO: Verificar si el usuario es admin
 
         if (input?.status) {
           return await db.select().from(reports).where(eq(reports.status, input.status));
@@ -221,7 +223,7 @@ export const safetyRouter = router({
   /**
    * Actualizar estado de reporte (solo admin)
    */
-  updateReportStatus: protectedProcedure
+  updateReportStatus: adminProcedure
     .input(
       z.object({
         reportId: z.number(),
@@ -233,8 +235,6 @@ export const safetyRouter = router({
       try {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
-
-        // TODO: Verificar si el usuario es admin
 
         await db
           .update(reports)
@@ -250,5 +250,139 @@ export const safetyRouter = router({
         console.error("Error updating report:", error);
         throw error;
       }
+    }),
+
+  /**
+   * Guardar contacto de emergencia y país del usuario.
+   */
+  saveSafetyProfile: protectedProcedure
+    .input(
+      z.object({
+        emergencyContactName: z.string().trim().min(2).max(120),
+        emergencyContactPhone: z.string().trim().min(6).max(20),
+        countryCode: z.string().length(2).default("CL"),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
+
+      const existing = await db.select().from(userProfiles).where(eq(userProfiles.userId, ctx.user.id)).limit(1);
+      const values = {
+        emergencyContactName: input.emergencyContactName,
+        emergencyContactPhone: input.emergencyContactPhone,
+        countryCode: input.countryCode.toUpperCase(),
+      };
+      if (existing[0]) {
+        await db.update(userProfiles).set(values).where(eq(userProfiles.userId, ctx.user.id));
+      } else {
+        await db.insert(userProfiles).values({ userId: ctx.user.id, ...values });
+      }
+      return { success: true as const };
+    }),
+
+  /**
+   * Compartir un viaje: genera un enlace (token aleatorio, expira en 24 h) para
+   * que un familiar vea ruta y horario. Solo conductor o pasajero con reserva.
+   */
+  createTripShare: protectedProcedure
+    .input(z.object({ tripId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
+
+      const tripRows = await db.select().from(trips).where(eq(trips.id, input.tripId)).limit(1);
+      const trip = tripRows[0];
+      if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Viaje no encontrado" });
+
+      let participant = trip.driverId === ctx.user.id;
+      if (!participant) {
+        const mine = await db
+          .select()
+          .from(bookings)
+          .where(and(eq(bookings.tripId, trip.id), eq(bookings.passengerId, ctx.user.id)));
+        participant = mine.some((b) => b.status === "pending" || b.status === "confirmed" || b.status === "completed");
+      }
+      if (!participant) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Solo participantes del viaje pueden compartirlo" });
+      }
+
+      const token = randomBytes(24).toString("hex");
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      await db.insert(tripShares).values({ tripId: trip.id, userId: ctx.user.id, token, expiresAt });
+      return { token, expiresAt };
+    }),
+
+  /**
+   * Vista pública del enlace compartido. Datos mínimos: ruta, horario y
+   * primer nombre del conductor. Nunca teléfono, email ni documento.
+   */
+  getSharedTrip: publicProcedure
+    .input(z.object({ token: z.string().min(32).max(64) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+
+      const shares = await db
+        .select()
+        .from(tripShares)
+        .where(and(eq(tripShares.token, input.token), gt(tripShares.expiresAt, new Date())))
+        .limit(1);
+      if (!shares[0]) return null;
+
+      const tripRows = await db.select().from(trips).where(eq(trips.id, shares[0].tripId)).limit(1);
+      const trip = tripRows[0];
+      if (!trip) return null;
+      const driver = await db.select().from(users).where(eq(users.id, trip.driverId)).limit(1);
+
+      return {
+        origin: trip.origin,
+        destination: trip.destination,
+        departureDate: trip.departureDate,
+        departureTime: trip.departureTime,
+        status: trip.status,
+        driverFirstName: driver[0]?.name?.split(" ")[0] ?? null,
+        expiresAt: shares[0].expiresAt,
+      };
+    }),
+
+  /**
+   * Botón SOS: registra un ticket urgente de seguridad y devuelve los números
+   * de emergencia del país junto al contacto de confianza del usuario.
+   * No reemplaza llamar a emergencias.
+   */
+  sos: protectedProcedure
+    .input(
+      z.object({
+        tripId: z.number().optional(),
+        latitude: z.number().min(-90).max(90).optional(),
+        longitude: z.number().min(-180).max(180).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
+
+      const profileRows = await db.select().from(userProfiles).where(eq(userProfiles.userId, ctx.user.id)).limit(1);
+      const profile = profileRows[0];
+      const country = getCountry(profile?.countryCode);
+
+      const where =
+        input.latitude != null && input.longitude != null ? ` Ubicación: ${input.latitude}, ${input.longitude}.` : "";
+      await db.insert(supportTickets).values({
+        userId: ctx.user.id,
+        subject: "SOS - alerta de seguridad",
+        description: `El usuario activó el botón SOS${input.tripId ? ` en el viaje #${input.tripId}` : ""}.${where}`,
+        category: "safety",
+        priority: "urgent",
+        status: "open",
+      });
+
+      return {
+        emergency: country.emergency,
+        trustedContact: profile?.emergencyContactPhone
+          ? { name: profile.emergencyContactName, phone: profile.emergencyContactPhone }
+          : null,
+      };
     }),
 });

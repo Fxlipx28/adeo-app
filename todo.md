@@ -16,14 +16,14 @@
 ## Fase 3: Funcionalidades Core - Pasajero
 - [x] Crear pantalla Home (lista de viajes disponibles)
 - [x] Implementar buscador de viajes (origen, destino, fecha)
-- [ ] Crear pantalla Detalle de Viaje
-- [ ] Implementar pantalla Reservar Viaje
+- [x] Crear pantalla Detalle de Viaje
+- [x] Implementar pantalla Reservar Viaje
 - [x] Crear pantalla Mis Viajes (reservas activas)
 
 ## Fase 4: Funcionalidades Core - Conductor
 - [x] Crear vista Home para conductores (compartida con pasajeros)
-- [ ] Implementar pantalla Publicar Viaje
-- [ ] Crear formulario de publicación (origen, destino, fecha, hora, asientos, precio)
+- [x] Implementar pantalla Publicar Viaje
+- [x] Crear formulario de publicación (origen, destino, fecha, hora, asientos, precio) + tope de costo compartido
 - [x] Implementar lista de viajes activos del conductor (API endpoint)
 - [x] Agregar opción para cancelar/cerrar viajes (API endpoint)
 
@@ -43,7 +43,7 @@
 ## Fase 6: Verificación de Identidad y Seguridad
 - [x] Crear tabla de verificaciones (documento, selfie, estado)
 - [x] Implementar pantalla de carga de documento
-- [ ] Implementar pantalla de selfie con cámara (requiere expo-camera)
+- [x] Implementar pantalla de selfie con cámara (expo-image-picker)
 - [x] Sistema de validación de documentos (backend API)
 - [x] Bloqueo de usuarios no verificados (lógica en backend)
 - [x] Sistema de reportes y bloqueos (API endpoints)
@@ -68,7 +68,7 @@
 - [x] Crear tabla de reportes
 - [x] Pantalla para reportar usuario (API endpoint)
 - [x] Sistema de bloqueos mutuos (API endpoint)
-- [ ] Panel de administrador
+- [ ] Panel de administrador (los endpoints ya exigen rol admin)
 - [ ] Notificaciones de seguridad
 
 ## Fase 7.5: Centro de Soporte
@@ -79,8 +79,8 @@
 - [ ] Respuestas automáticas
 
 ## Fase 10: Preparación para Producción
-- [ ] Términos de servicio
-- [ ] Política de privacidad
+- [x] Términos de servicio (borrador, revisar con abogado)
+- [x] Política de privacidad (borrador, revisar con abogado)
 - [ ] Configuración de Play Store
 - [ ] Certificados y firmas
 - [ ] Testing final
@@ -91,3 +91,18 @@
 - Implementar backend para sincronización de viajes
 - Considerar notificaciones push para nuevas reservas
 - Sistema de pagos: integrar después de MVP
+
+## Fase 11: Chile + Mundial (nuevo)
+- [x] Config por país (moneda, locale, zona horaria, emergencias) — solo Chile habilitado
+- [x] Tope de precio por costo compartido (legalidad carpooling)
+- [x] Fee de servicio al pasajero (el conductor recibe el precio completo)
+- [x] Reservas atómicas (sin overbooking) y cancelaciones sin doble devolución de asientos
+- [x] Endpoints de admin protegidos (verificaciones, reportes, pagos)
+- [x] RUT validado (módulo 11) y documento guardado enmascarado
+- [x] Compartir viaje con familiar (24 h) y botón SOS
+- [x] i18n es/en
+- [ ] Pasarela de pago real para Chile (Webpay/Flow/Mercado Pago)
+- [ ] Mapas y distancia automática (hoy la distancia la ingresa el conductor)
+- [ ] Datos del vehículo, licencia, SOAP y revisión técnica del conductor
+- [ ] Panel admin para aprobar verificaciones
+- [ ] Revisión legal (ver docs/LEGAL_CHILE.md)

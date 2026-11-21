@@ -1,170 +1,182 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { and, asc, eq, gte, notInArray } from "drizzle-orm";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { trips } from "../../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { blocks, trips } from "../../drizzle/schema";
+import { COUNTRY_CODES, getCountry, isFutureDeparture, isLaunched, localNowStamp } from "../../shared/countries";
+import { maxPricePerSeat, tripTotalCost } from "../../shared/pricing";
+import { assertVerified } from "../lib/guards";
+
+const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+const timeRe = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export const tripsRouter = router({
   /**
-   * Obtener todos los viajes disponibles con filtros opcionales
+   * Buscar viajes activos y futuros. Si hay sesión, oculta conductores con
+   * los que existe un bloqueo (en cualquier dirección).
    */
   list: publicProcedure
     .input(
-      z.object({
-        origin: z.string().optional(),
-        destination: z.string().optional(),
-        date: z.string().optional(),
-      }).optional()
+      z
+        .object({
+          origin: z.string().optional(),
+          destination: z.string().optional(),
+          date: z.string().regex(dateRe).optional(),
+          countryCode: z.enum(COUNTRY_CODES as [string, ...string[]]).optional(),
+        })
+        .optional(),
     )
-    .query(async ({ input }) => {
-      try {
-        const db = await getDb();
-        if (!db) return [];
+    .query(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) return [];
 
-        const conditions = [eq(trips.status, "active")];
-        
-        if (input?.origin) {
-          conditions.push(eq(trips.origin, input.origin));
-        }
-        if (input?.destination) {
-          conditions.push(eq(trips.destination, input.destination));
-        }
-        if (input?.date) {
-          conditions.push(eq(trips.departureDate, input.date));
-        }
+      const country = input?.countryCode ?? "CL";
+      const today = localNowStamp(country).slice(0, 10);
 
-        const results = await db
-          .select()
-          .from(trips)
-          .where(and(...conditions))
-          .limit(50);
-        
-        return results;
-      } catch (error) {
-        console.error("Error fetching trips:", error);
-        return [];
+      const conditions = [
+        eq(trips.status, "active"),
+        eq(trips.countryCode, country),
+        gte(trips.departureDate, input?.date ?? today),
+        gte(trips.availableSeats, 1),
+      ];
+      if (input?.date) conditions.push(eq(trips.departureDate, input.date));
+
+      if (ctx.user) {
+        const rows = await db.select().from(blocks);
+        const hidden = rows
+          .filter((b) => b.userId === ctx.user!.id || b.blockedUserId === ctx.user!.id)
+          .map((b) => (b.userId === ctx.user!.id ? b.blockedUserId : b.userId));
+        if (hidden.length) conditions.push(notInArray(trips.driverId, hidden));
       }
+
+      const results = await db
+        .select()
+        .from(trips)
+        .where(and(...conditions))
+        .orderBy(asc(trips.departureDate), asc(trips.departureTime))
+        .limit(100);
+
+      // Búsqueda flexible por texto (acentos/mayúsculas) y que no salgan viajes ya partidos hoy
+      const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+      const now = localNowStamp(country);
+      return results.filter((t) => {
+        if (`${t.departureDate} ${t.departureTime}` <= now) return false;
+        if (input?.origin && !norm(t.origin).includes(norm(input.origin))) return false;
+        if (input?.destination && !norm(t.destination).includes(norm(input.destination))) return false;
+        return true;
+      });
     }),
 
-  /**
-   * Obtener detalles de un viaje específico
-   */
-  getById: publicProcedure
-    .input(z.object({ id: z.number() }))
-    .query(async ({ input }) => {
-      try {
-        const db = await getDb();
-        if (!db) return null;
+  getById: publicProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+    const db = await getDb();
+    if (!db) return null;
+    const rows = await db.select().from(trips).where(eq(trips.id, input.id)).limit(1);
+    return rows[0] ?? null;
+  }),
 
-        const trip = await db
-          .select()
-          .from(trips)
-          .where(eq(trips.id, input.id))
-          .limit(1);
-        
-        return trip[0] || null;
-      } catch (error) {
-        console.error("Error fetching trip:", error);
-        return null;
-      }
-    }),
+  /** Tope de precio para mostrarlo en el formulario de publicación. */
+  priceCap: publicProcedure
+    .input(
+      z.object({
+        countryCode: z.enum(COUNTRY_CODES as [string, ...string[]]),
+        distanceKm: z.number().int().min(1).max(5000),
+        tollsAmount: z.number().int().min(0).default(0),
+        totalSeats: z.number().int().min(1).max(8),
+      }),
+    )
+    .query(({ input }) => ({
+      launched: isLaunched(input.countryCode),
+      totalCost: tripTotalCost(input),
+      maxPricePerSeat: maxPricePerSeat(input),
+      currency: getCountry(input.countryCode).currency,
+    })),
 
   /**
-   * Publicar un nuevo viaje (solo usuarios autenticados)
+   * Publicar un viaje. Reglas:
+   *  - el conductor debe tener identidad verificada
+   *  - el país debe estar habilitado
+   *  - la salida debe ser futura
+   *  - el precio por asiento no puede superar el costo compartido
    */
   publish: protectedProcedure
     .input(
       z.object({
-        origin: z.string().min(1),
-        destination: z.string().min(1),
-        departureDate: z.string(),
-        departureTime: z.string(),
-        totalSeats: z.number().min(1).max(8),
-        pricePerSeat: z.number().min(1),
-        description: z.string().optional(),
-      })
+        origin: z.string().trim().min(2).max(255),
+        destination: z.string().trim().min(2).max(255),
+        departureDate: z.string().regex(dateRe),
+        departureTime: z.string().regex(timeRe),
+        totalSeats: z.number().int().min(1).max(8),
+        pricePerSeat: z.number().int().min(0),
+        distanceKm: z.number().int().min(1).max(5000),
+        tollsAmount: z.number().int().min(0).default(0),
+        countryCode: z.enum(COUNTRY_CODES as [string, ...string[]]).default("CL"),
+        description: z.string().max(1000).optional(),
+      }),
     )
     .mutation(async ({ input, ctx }) => {
-      try {
-        const db = await getDb();
-        if (!db) throw new Error("Database not available");
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
 
-        await db.insert(trips).values({
-          driverId: ctx.user.id,
-          origin: input.origin,
-          destination: input.destination,
-          departureDate: input.departureDate,
-          departureTime: input.departureTime,
-          totalSeats: input.totalSeats,
-          availableSeats: input.totalSeats,
-          pricePerSeat: input.pricePerSeat,
-          description: input.description,
-          status: "active",
-        });
-
-        return {
-          success: true,
-          message: "Trip published successfully",
-        };
-      } catch (error) {
-        console.error("Error publishing trip:", error);
-        throw new Error("Failed to publish trip");
+      if (!isLaunched(input.countryCode)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Adeo aún no está disponible en este país." });
       }
+      if (input.origin.toLowerCase() === input.destination.toLowerCase()) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El origen y el destino no pueden ser iguales." });
+      }
+      if (!isFutureDeparture(input.countryCode, input.departureDate, input.departureTime)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "La salida debe ser en el futuro." });
+      }
+
+      await assertVerified(db, ctx.user.id, "Debes verificar tu identidad para publicar viajes.");
+
+      const cap = maxPricePerSeat(input);
+      if (input.pricePerSeat > cap) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `En Adeo solo se comparten los costos del viaje. El máximo por asiento para esta ruta es ${cap}.`,
+        });
+      }
+
+      const country = getCountry(input.countryCode);
+      const result = await db.insert(trips).values({
+        driverId: ctx.user.id,
+        origin: input.origin,
+        destination: input.destination,
+        departureDate: input.departureDate,
+        departureTime: input.departureTime,
+        totalSeats: input.totalSeats,
+        availableSeats: input.totalSeats,
+        pricePerSeat: input.pricePerSeat,
+        distanceKm: input.distanceKm,
+        tollsAmount: input.tollsAmount,
+        countryCode: country.code,
+        currency: country.currency,
+        description: input.description,
+        status: "active",
+      });
+
+      return { success: true as const, tripId: Number((result as any)[0]?.insertId ?? 0) };
     }),
 
-  /**
-   * Obtener viajes publicados por el usuario actual (conductor)
-   */
   myTrips: protectedProcedure.query(async ({ ctx }) => {
-    try {
-      const db = await getDb();
-      if (!db) return [];
-
-      const userTrips = await db
-        .select()
-        .from(trips)
-        .where(eq(trips.driverId, ctx.user.id));
-      
-      return userTrips;
-    } catch (error) {
-      console.error("Error fetching user trips:", error);
-      return [];
-    }
+    const db = await getDb();
+    if (!db) return [];
+    return db.select().from(trips).where(eq(trips.driverId, ctx.user.id));
   }),
 
-  /**
-   * Cancelar un viaje (solo el conductor que lo publicó)
-   */
-  cancel: protectedProcedure
-    .input(z.object({ tripId: z.number() }))
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const db = await getDb();
-        if (!db) throw new Error("Database not available");
+  cancel: protectedProcedure.input(z.object({ tripId: z.number() })).mutation(async ({ input, ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
 
-        const trip = await db
-          .select()
-          .from(trips)
-          .where(eq(trips.id, input.tripId))
-          .limit(1);
+    const rows = await db.select().from(trips).where(eq(trips.id, input.tripId)).limit(1);
+    const trip = rows[0];
+    if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Viaje no encontrado" });
+    if (trip.driverId !== ctx.user.id) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Solo el conductor puede cancelar este viaje" });
+    }
 
-        if (!trip[0]) {
-          throw new Error("Trip not found");
-        }
-
-        if (trip[0].driverId !== ctx.user.id) {
-          throw new Error("Unauthorized: Only the driver can cancel this trip");
-        }
-
-        await db
-          .update(trips)
-          .set({ status: "cancelled" })
-          .where(eq(trips.id, input.tripId));
-
-        return { success: true };
-      } catch (error) {
-        console.error("Error cancelling trip:", error);
-        throw error;
-      }
-    }),
+    await db.update(trips).set({ status: "cancelled" }).where(eq(trips.id, input.tripId));
+    return { success: true as const };
+  }),
 });

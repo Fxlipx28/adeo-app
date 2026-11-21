@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { transactions, paymentMethods, bookings } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 export const paymentsRouter = router({
   /**
@@ -72,7 +72,6 @@ export const paymentsRouter = router({
     .input(
       z.object({
         bookingId: z.number(),
-        amount: z.number().min(1),
         paymentMethod: z.enum(["paypal", "stripe", "cash"]),
       })
     )
@@ -92,11 +91,24 @@ export const paymentsRouter = router({
           throw new Error("Booking not found or unauthorized");
         }
 
-        // Crear transacción
+        if (booking[0].status === "cancelled") {
+          throw new Error("La reserva está cancelada");
+        }
+
+        // Evitar cobros duplicados para la misma reserva
+        const existing = await db
+          .select()
+          .from(transactions)
+          .where(and(eq(transactions.bookingId, input.bookingId), eq(transactions.userId, ctx.user.id)));
+        if (existing.some((t) => t.paymentStatus === "pending" || t.paymentStatus === "completed")) {
+          throw new Error("Ya existe un pago para esta reserva");
+        }
+
+        // El monto SIEMPRE sale de la reserva (nunca del cliente)
         const result = await db.insert(transactions).values({
           bookingId: input.bookingId,
           userId: ctx.user.id,
-          amount: input.amount,
+          amount: booking[0].totalPrice,
           paymentMethod: input.paymentMethod,
           paymentStatus: "pending",
           description: `Pago de viaje - Reserva #${input.bookingId}`,
@@ -133,9 +145,10 @@ export const paymentsRouter = router({
   }),
 
   /**
-   * Confirmar pago (webhook de PayPal/Stripe)
+   * Confirmar pago. SOLO admin / webhook de la pasarela: un usuario no puede
+   * marcar su propio pago como completado.
    */
-  confirmPayment: protectedProcedure
+  confirmPayment: adminProcedure
     .input(
       z.object({
         transactionId: z.number(),
@@ -147,15 +160,14 @@ export const paymentsRouter = router({
         const db = await getDb();
         if (!db) throw new Error("Database not available");
 
-        // Verificar que la transacción pertenece al usuario
         const transaction = await db
           .select()
           .from(transactions)
           .where(eq(transactions.id, input.transactionId))
           .limit(1);
 
-        if (!transaction[0] || transaction[0].userId !== ctx.user.id) {
-          throw new Error("Transaction not found or unauthorized");
+        if (!transaction[0]) {
+          throw new Error("Transaction not found");
         }
 
         // Actualizar estado de la transacción
@@ -175,9 +187,9 @@ export const paymentsRouter = router({
     }),
 
   /**
-   * Procesar reembolso
+   * Procesar reembolso (admin / soporte).
    */
-  refundPayment: protectedProcedure
+  refundPayment: adminProcedure
     .input(z.object({ transactionId: z.number() }))
     .mutation(async ({ input, ctx }) => {
       try {
@@ -190,8 +202,8 @@ export const paymentsRouter = router({
           .where(eq(transactions.id, input.transactionId))
           .limit(1);
 
-        if (!transaction[0] || transaction[0].userId !== ctx.user.id) {
-          throw new Error("Transaction not found or unauthorized");
+        if (!transaction[0]) {
+          throw new Error("Transaction not found");
         }
 
         // TODO: Procesar reembolso en PayPal/Stripe

@@ -1,224 +1,146 @@
 import { z } from "zod";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
+import { and, eq, sql } from "drizzle-orm";
+import { protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { bookings, trips } from "../../drizzle/schema";
-import { eq, and } from "drizzle-orm";
+import { getCountry, isFutureDeparture } from "../../shared/countries";
+import { calcBookingAmounts } from "../../shared/pricing";
+import { areBlocked, assertVerified } from "../lib/guards";
+
+const affected = (res: unknown): number => Number((res as any)?.[0]?.affectedRows ?? (res as any)?.affectedRows ?? 0);
 
 export const bookingsRouter = router({
   /**
-   * Crear una nueva reserva
+   * Reservar asientos. Es atómico: el descuento de asientos solo ocurre si
+   * quedan lugares, así dos pasajeros no pueden reservar el mismo asiento.
+   * El fee de Adeo se suma al pasajero; el conductor recibe el precio completo.
    */
   create: protectedProcedure
-    .input(
-      z.object({
-        tripId: z.number(),
-        seatsBooked: z.number().min(1).max(8),
-      })
-    )
+    .input(z.object({ tripId: z.number(), seatsBooked: z.number().int().min(1).max(8) }))
     .mutation(async ({ input, ctx }) => {
-      try {
-        const db = await getDb();
-        if (!db) throw new Error("Database not available");
-
-        // Obtener información del viaje
-        const trip = await db
-          .select()
-          .from(trips)
-          .where(eq(trips.id, input.tripId))
-          .limit(1);
-
-        if (!trip[0]) {
-          throw new Error("Trip not found");
-        }
-
-        // Validar asientos disponibles
-        if (trip[0].availableSeats < input.seatsBooked) {
-          throw new Error("Not enough available seats");
-        }
-
-        // Calcular precios
-        const totalPrice = trip[0].pricePerSeat * input.seatsBooked;
-        const platformCommission = Math.ceil(totalPrice * 0.1); // 10% para Adeo
-        const driverEarnings = totalPrice - platformCommission;
-
-        // Crear reserva
-        await db.insert(bookings).values({
-          tripId: input.tripId,
-          passengerId: ctx.user.id,
-          seatsBooked: input.seatsBooked,
-          totalPrice,
-          platformCommission,
-          driverEarnings,
-          status: "pending",
-        });
-
-        // Actualizar asientos disponibles
-        await db
-          .update(trips)
-          .set({
-            availableSeats: trip[0].availableSeats - input.seatsBooked,
-          })
-          .where(eq(trips.id, input.tripId));
-
-        return {
-          success: true,
-          message: "Booking created successfully",
-          totalPrice,
-          platformCommission,
-          driverEarnings,
-        };
-      } catch (error) {
-        console.error("Error creating booking:", error);
-        throw error;
-      }
-    }),
-
-  /**
-   * Obtener reservas del usuario actual
-   */
-  myBookings: protectedProcedure.query(async ({ ctx }) => {
-    try {
       const db = await getDb();
-      if (!db) return [];
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
 
-      const userBookings = await db
+      const rows = await db.select().from(trips).where(eq(trips.id, input.tripId)).limit(1);
+      const trip = rows[0];
+      if (!trip) throw new TRPCError({ code: "NOT_FOUND", message: "Viaje no encontrado" });
+      if (trip.status !== "active") throw new TRPCError({ code: "BAD_REQUEST", message: "Este viaje ya no está disponible" });
+      if (trip.driverId === ctx.user.id) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "No puedes reservar tu propio viaje" });
+      }
+      if (!isFutureDeparture(trip.countryCode, trip.departureDate, trip.departureTime)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Este viaje ya salió" });
+      }
+      if (await areBlocked(db, ctx.user.id, trip.driverId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "No puedes reservar este viaje" });
+      }
+      await assertVerified(db, ctx.user.id, "Debes verificar tu identidad para reservar viajes.");
+
+      const existing = await db
         .select()
         .from(bookings)
-        .where(eq(bookings.passengerId, ctx.user.id));
+        .where(and(eq(bookings.tripId, trip.id), eq(bookings.passengerId, ctx.user.id)));
+      if (existing.some((b) => b.status === "pending" || b.status === "confirmed")) {
+        throw new TRPCError({ code: "CONFLICT", message: "Ya tienes una reserva en este viaje" });
+      }
 
-      return userBookings;
-    } catch (error) {
-      console.error("Error fetching user bookings:", error);
-      return [];
-    }
+      const amounts = calcBookingAmounts(trip.pricePerSeat, input.seatsBooked, getCountry(trip.countryCode).serviceFeeRate);
+
+      const bookingId = await db.transaction(async (tx) => {
+        const res = await tx
+          .update(trips)
+          .set({ availableSeats: sql`${trips.availableSeats} - ${input.seatsBooked}` })
+          .where(and(eq(trips.id, trip.id), eq(trips.status, "active"), sql`${trips.availableSeats} >= ${input.seatsBooked}`));
+        if (affected(res) === 0) {
+          throw new TRPCError({ code: "CONFLICT", message: "No quedan asientos suficientes" });
+        }
+        const ins = await tx.insert(bookings).values({
+          tripId: trip.id,
+          passengerId: ctx.user.id,
+          seatsBooked: input.seatsBooked,
+          totalPrice: amounts.totalPrice,
+          platformCommission: amounts.platformCommission,
+          driverEarnings: amounts.driverEarnings,
+          status: "pending",
+        });
+        return Number((ins as any)[0]?.insertId ?? 0);
+      });
+
+      return { success: true as const, bookingId, ...amounts };
+    }),
+
+  myBookings: protectedProcedure.query(async ({ ctx }) => {
+    const db = await getDb();
+    if (!db) return [];
+    // Cada reserva con los datos de su viaje (para mostrar ruta, fecha y moneda)
+    const rows = await db
+      .select({ booking: bookings, trip: trips })
+      .from(bookings)
+      .innerJoin(trips, eq(bookings.tripId, trips.id))
+      .where(eq(bookings.passengerId, ctx.user.id));
+    return rows.map((r) => ({ ...r.booking, trip: r.trip }));
   }),
 
-  /**
-   * Obtener reservas para un viaje específico (solo el conductor)
-   */
-  tripBookings: protectedProcedure
-    .input(z.object({ tripId: z.number() }))
-    .query(async ({ input, ctx }) => {
-      try {
-        const db = await getDb();
-        if (!db) return [];
+  /** Reservas de un viaje (solo el conductor). */
+  tripBookings: protectedProcedure.input(z.object({ tripId: z.number() })).query(async ({ input, ctx }) => {
+    const db = await getDb();
+    if (!db) return [];
+    const rows = await db.select().from(trips).where(eq(trips.id, input.tripId)).limit(1);
+    if (!rows[0] || rows[0].driverId !== ctx.user.id) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Solo el conductor puede ver las reservas" });
+    }
+    return db.select().from(bookings).where(eq(bookings.tripId, input.tripId));
+  }),
 
-        // Verificar que el usuario es el conductor del viaje
-        const trip = await db
-          .select()
-          .from(trips)
-          .where(eq(trips.id, input.tripId))
-          .limit(1);
+  /** Cancelar una reserva: solo si está activa, y devuelve los asientos una única vez. */
+  cancel: protectedProcedure.input(z.object({ bookingId: z.number() })).mutation(async ({ input, ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
 
-        if (!trip[0] || trip[0].driverId !== ctx.user.id) {
-          throw new Error("Unauthorized: Only the driver can view bookings");
-        }
+    const rows = await db.select().from(bookings).where(eq(bookings.id, input.bookingId)).limit(1);
+    const booking = rows[0];
+    if (!booking) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
+    if (booking.passengerId !== ctx.user.id) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Solo el pasajero puede cancelar su reserva" });
+    }
 
-        const tripBookings = await db
-          .select()
-          .from(bookings)
-          .where(eq(bookings.tripId, input.tripId));
-
-        return tripBookings;
-      } catch (error) {
-        console.error("Error fetching trip bookings:", error);
-        return [];
+    await db.transaction(async (tx) => {
+      // Cambio de estado condicionado: si ya estaba cancelada/completada, no hace nada.
+      const res = await tx
+        .update(bookings)
+        .set({ status: "cancelled" })
+        .where(and(eq(bookings.id, booking.id), sql`${bookings.status} IN ('pending','confirmed')`));
+      if (affected(res) === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta reserva ya no se puede cancelar" });
       }
-    }),
+      await tx
+        .update(trips)
+        .set({ availableSeats: sql`${trips.availableSeats} + ${booking.seatsBooked}` })
+        .where(eq(trips.id, booking.tripId));
+    });
 
-  /**
-   * Cancelar una reserva
-   */
-  cancel: protectedProcedure
-    .input(z.object({ bookingId: z.number() }))
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const db = await getDb();
-        if (!db) throw new Error("Database not available");
+    return { success: true as const };
+  }),
 
-        const booking = await db
-          .select()
-          .from(bookings)
-          .where(eq(bookings.id, input.bookingId))
-          .limit(1);
+  /** El conductor confirma una reserva pendiente. */
+  confirm: protectedProcedure.input(z.object({ bookingId: z.number() })).mutation(async ({ input, ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Base de datos no disponible" });
 
-        if (!booking[0]) {
-          throw new Error("Booking not found");
-        }
+    const rows = await db.select().from(bookings).where(eq(bookings.id, input.bookingId)).limit(1);
+    const booking = rows[0];
+    if (!booking) throw new TRPCError({ code: "NOT_FOUND", message: "Reserva no encontrada" });
 
-        if (booking[0].passengerId !== ctx.user.id) {
-          throw new Error("Unauthorized: Only the passenger can cancel this booking");
-        }
+    const tripRows = await db.select().from(trips).where(eq(trips.id, booking.tripId)).limit(1);
+    if (!tripRows[0] || tripRows[0].driverId !== ctx.user.id) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Solo el conductor puede confirmar reservas" });
+    }
+    if (booking.status !== "pending") {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Solo se pueden confirmar reservas pendientes" });
+    }
 
-        // Actualizar estado de la reserva
-        await db
-          .update(bookings)
-          .set({ status: "cancelled" })
-          .where(eq(bookings.id, input.bookingId));
-
-        // Devolver asientos al viaje
-        const trip = await db
-          .select()
-          .from(trips)
-          .where(eq(trips.id, booking[0].tripId))
-          .limit(1);
-
-        if (trip[0]) {
-          await db
-            .update(trips)
-            .set({
-              availableSeats: trip[0].availableSeats + booking[0].seatsBooked,
-            })
-            .where(eq(trips.id, booking[0].tripId));
-        }
-
-        return { success: true };
-      } catch (error) {
-        console.error("Error cancelling booking:", error);
-        throw error;
-      }
-    }),
-
-  /**
-   * Confirmar una reserva (cambiar de pending a confirmed)
-   */
-  confirm: protectedProcedure
-    .input(z.object({ bookingId: z.number() }))
-    .mutation(async ({ input, ctx }) => {
-      try {
-        const db = await getDb();
-        if (!db) throw new Error("Database not available");
-
-        const booking = await db
-          .select()
-          .from(bookings)
-          .where(eq(bookings.id, input.bookingId))
-          .limit(1);
-
-        if (!booking[0]) {
-          throw new Error("Booking not found");
-        }
-
-        // Verificar que es el conductor del viaje
-        const trip = await db
-          .select()
-          .from(trips)
-          .where(eq(trips.id, booking[0].tripId))
-          .limit(1);
-
-        if (!trip[0] || trip[0].driverId !== ctx.user.id) {
-          throw new Error("Unauthorized: Only the driver can confirm bookings");
-        }
-
-        await db
-          .update(bookings)
-          .set({ status: "confirmed" })
-          .where(eq(bookings.id, input.bookingId));
-
-        return { success: true };
-      } catch (error) {
-        console.error("Error confirming booking:", error);
-        throw error;
-      }
-    }),
+    await db.update(bookings).set({ status: "confirmed" }).where(eq(bookings.id, input.bookingId));
+    return { success: true as const };
+  }),
 });

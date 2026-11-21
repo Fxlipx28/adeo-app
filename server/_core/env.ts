@@ -6,5 +6,7 @@ export const ENV = {
   ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
+  /** Si es "false", no se exige identidad verificada (solo para desarrollo/pruebas). */
+  requireVerification: process.env.REQUIRE_VERIFICATION !== "false",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
 };

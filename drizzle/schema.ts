@@ -37,7 +37,11 @@ export const trips = mysqlTable("trips", {
   departureTime: varchar("departureTime", { length: 5 }).notNull(), // HH:MM
   totalSeats: int("totalSeats").notNull(),
   availableSeats: int("availableSeats").notNull(),
-  pricePerSeat: int("pricePerSeat").notNull(), // En centavos o unidades mínimas
+  pricePerSeat: int("pricePerSeat").notNull(), // En unidades mínimas de la moneda (CLP no tiene decimales)
+  countryCode: varchar("countryCode", { length: 2 }).default("CL").notNull(),
+  currency: varchar("currency", { length: 3 }).default("CLP").notNull(),
+  distanceKm: int("distanceKm").default(0).notNull(), // Base del tope de costo compartido
+  tollsAmount: int("tollsAmount").default(0).notNull(), // Peajes del trayecto
   description: text("description"),
   status: mysqlEnum("status", ["active", "completed", "cancelled"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -90,6 +94,9 @@ export const userProfiles = mysqlTable("userProfiles", {
   userId: int("userId").notNull().unique(),
   phone: varchar("phone", { length: 20 }),
   bio: text("bio"),
+  countryCode: varchar("countryCode", { length: 2 }).default("CL").notNull(),
+  emergencyContactName: varchar("emergencyContactName", { length: 120 }),
+  emergencyContactPhone: varchar("emergencyContactPhone", { length: 20 }),
   userType: mysqlEnum("userType", ["passenger", "driver", "both"]).default("passenger").notNull(),
   averageRating: int("averageRating"), // Almacenado como número entero (ej: 48 = 4.8)
   totalTrips: int("totalTrips").default(0).notNull(),
@@ -188,6 +195,22 @@ export const tripTracking = mysqlTable("tripTracking", {
 
 export type TripTracking = typeof tripTracking.$inferSelect;
 export type InsertTripTracking = typeof tripTracking.$inferInsert;
+
+/**
+ * Trip shares - Enlaces para que un familiar siga un viaje en vivo.
+ * El token es aleatorio, expira y solo expone datos mínimos del viaje.
+ */
+export const tripShares = mysqlTable("tripShares", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  userId: int("userId").notNull(), // quien comparte
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TripShare = typeof tripShares.$inferSelect;
+export type InsertTripShare = typeof tripShares.$inferInsert;
 
 /**
  * Payment methods table - Métodos de pago guardados

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { ratings, userProfiles } from "../../drizzle/schema";
-import { eq, avg } from "drizzle-orm";
+import { bookings, ratings, trips, userProfiles } from "../../drizzle/schema";
+import { and, eq } from "drizzle-orm";
 
 export const ratingsRouter = router({
   /**
@@ -13,14 +13,41 @@ export const ratingsRouter = router({
       z.object({
         toUserId: z.number(),
         tripId: z.number(),
-        score: z.number().min(1).max(5),
-        comment: z.string().optional(),
+        score: z.number().int().min(1).max(5),
+        comment: z.string().max(500).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       try {
         const db = await getDb();
         if (!db) throw new Error("Database not available");
+
+        if (input.toUserId === ctx.user.id) {
+          throw new Error("No puedes calificarte a ti mismo");
+        }
+
+        // Solo participantes del viaje (conductor <-> pasajero con reserva confirmada/completada)
+        const tripRows = await db.select().from(trips).where(eq(trips.id, input.tripId)).limit(1);
+        const trip = tripRows[0];
+        if (!trip) throw new Error("Viaje no encontrado");
+        const tripBookings = await db.select().from(bookings).where(eq(bookings.tripId, input.tripId));
+        const valid = tripBookings.filter((b) => b.status === "confirmed" || b.status === "completed");
+        const passengers = new Set(valid.map((b) => b.passengerId));
+        const participants = new Set<number>([trip.driverId, ...passengers]);
+        if (!participants.has(ctx.user.id) || !participants.has(input.toUserId)) {
+          throw new Error("Solo puedes calificar a personas con las que compartiste este viaje");
+        }
+        if (ctx.user.id !== trip.driverId && input.toUserId !== trip.driverId) {
+          throw new Error("Los pasajeros solo califican al conductor");
+        }
+
+        // Una calificación por persona y viaje
+        const dup = await db
+          .select()
+          .from(ratings)
+          .where(and(eq(ratings.fromUserId, ctx.user.id), eq(ratings.toUserId, input.toUserId), eq(ratings.tripId, input.tripId)))
+          .limit(1);
+        if (dup[0]) throw new Error("Ya calificaste este viaje");
 
         // Crear calificación
         await db.insert(ratings).values({
