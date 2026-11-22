@@ -159,7 +159,20 @@ function deviceLocale(): string {
 }
 
 const locale = deviceLocale();
-const lang = locale.slice(0, 2).toLowerCase();
+
+/** Español por defecto (mercado: Chile). Inglés solo si se pide con ?lang=en en la web. */
+function pickLang(): string {
+  try {
+    if (Platform.OS === "web") {
+      const q = new URLSearchParams(window.location.search).get("lang");
+      if (q) return q.slice(0, 2).toLowerCase();
+    }
+  } catch {
+    /* ignora */
+  }
+  return "es";
+}
+const lang = pickLang();
 const dict: Dict = dictionaries[lang] ?? es;
 
 export function t(key: TKey): string {

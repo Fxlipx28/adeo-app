@@ -7,12 +7,13 @@ import { CHILE_CENTER } from "./trip-map-types";
  * Mapa interactivo (web) con Leaflet + OpenStreetMap: zoom con rueda/pellizco,
  * arrastre, y pines con la foto del primer conductor + contador "+N".
  *
- * Los tiles de openstreetmap.org son para uso liviano. En producción define
- * EXPO_PUBLIC_TILE_URL con un proveedor propio/de pago (MapTiler, Stadia, Mapbox).
+ * Tiles: por defecto CARTO "Voyager" (estilo limpio y claro, gratis para pruebas/uso no comercial).
+ * OpenStreetMap bloquea el uso desde apps sin su política (error 403). En producción
+ * define EXPO_PUBLIC_TILE_URL con un proveedor con licencia (MapTiler, Stadia, Mapbox, CARTO).
  */
 const LEAFLET_JS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
 const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-const TILE_URL = process.env.EXPO_PUBLIC_TILE_URL ?? "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const TILE_URL = process.env.EXPO_PUBLIC_TILE_URL ?? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
 let leafletPromise: Promise<any> | null = null;
 function loadLeaflet(): Promise<any> {
@@ -85,10 +86,14 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMap
     loadLeaflet().then((L) => {
       if (cancelled || !el.current || mapRef.current) return;
       const map = L.map(el.current, { zoomControl: true, attributionControl: true }).setView([CHILE_CENTER.lat, CHILE_CENTER.lng], 6);
-      L.tileLayer(TILE_URL, { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+      L.tileLayer(TILE_URL, { maxZoom: 19, subdomains: "abcd", attribution: "&copy; OpenStreetMap &copy; CARTO" }).addTo(map);
       map.on("click", () => onSelectRef.current(null));
       layerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
+      // Recalcular tamaño cuando el contenedor cambie (evita que el mapa quede con zoom mínimo)
+      if (typeof ResizeObserver !== "undefined" && el.current) {
+        new ResizeObserver(() => map.invalidateSize()).observe(el.current);
+      }
       setTimeout(() => map.invalidateSize(), 100);
       (window as any).__adeoRedraw?.();
     });
@@ -106,6 +111,7 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMap
       const map = mapRef.current;
       const layer = layerRef.current;
       if (!L || !map || !layer) return;
+      map.invalidateSize();
       layer.clearLayers();
 
       const sel = groups.find((g) => g.key === selectedKey) ?? null;
