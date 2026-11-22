@@ -1,4 +1,5 @@
 import { ScrollView, Text, View, Pressable, TextInput, ActivityIndicator, Alert } from "react-native";
+import { BackBar } from "@/components/back-bar";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -37,6 +38,7 @@ export default function SupportScreen() {
 
   return (
     <ScreenContainer className="p-4">
+      <BackBar title="Soporte" />
       <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
         {/* Header */}
         <View style={{ marginBottom: 24 }}>

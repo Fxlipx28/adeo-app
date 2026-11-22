@@ -5,7 +5,7 @@ export function Avatar({
   name,
   photoUrl,
   size = 44,
-  color = "#0a7ea4",
+  color = "#1F6B57",
 }: {
   name: string;
   photoUrl?: string | null;

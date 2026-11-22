@@ -5,8 +5,21 @@ export interface TripMapProps {
   selectedKey: string | null;
   /** Se llama con la clave del grupo tocado, o null al tocar el mapa vacío. */
   onSelect: (key: string | null) => void;
-  height?: number;
+  /** Alto en px o "100%" para llenar el contenedor. */
+  height?: number | `${number}%`;
+  /** Píxeles de la parte inferior tapados por la hoja de viajes (para encuadrar bien). */
+  bottomInset?: number;
 }
 
 /** Centro y zoom iniciales: zona central de Chile. */
 export const CHILE_CENTER = { lat: -34.2, lng: -71.0 };
+
+/**
+ * Límites del mapa: Latinoamérica. Evita que al alejar se vea el mundo repetido.
+ * [[sur, oeste], [norte, este]]
+ */
+export const MAP_BOUNDS: [[number, number], [number, number]] = [
+  [-58, -100],
+  [16, -30],
+];
+export const MAP_MIN_ZOOM = 4;

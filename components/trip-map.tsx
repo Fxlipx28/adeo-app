@@ -9,7 +9,7 @@ import { CHILE_CENTER, type TripMapProps } from "./trip-map-types";
  * pines con la foto del primer conductor + contador "+N".
  * Android usa Google Maps (requiere API key en la build); iOS usa Apple Maps.
  */
-export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMapProps) {
+export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomInset = 0 }: TripMapProps) {
   const ref = useRef<MapView | null>(null);
   const fitted = useRef(false);
   // Los pines con imágenes necesitan "tracksViewChanges" un momento para renderizarse
@@ -28,12 +28,12 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMap
         { latitude: sel.lat, longitude: sel.lng },
         ...sel.trips.filter((t) => t.originLat != null && t.originLng != null).map((t) => ({ latitude: t.originLat as number, longitude: t.originLng as number })),
       ];
-      ref.current?.fitToCoordinates(pts, { edgePadding: { top: 80, right: 60, bottom: 60, left: 60 }, animated: true });
+      ref.current?.fitToCoordinates(pts, { edgePadding: { top: 110, right: 60, bottom: 60 + bottomInset, left: 60 }, animated: true });
     } else if (!fitted.current && groups.length > 0) {
       fitted.current = true;
       ref.current?.fitToCoordinates(
         groups.map((g) => ({ latitude: g.lat, longitude: g.lng })),
-        { edgePadding: { top: 80, right: 60, bottom: 60, left: 60 }, animated: false },
+        { edgePadding: { top: 110, right: 60, bottom: 60 + bottomInset, left: 60 }, animated: false },
       );
     }
   }, [selectedKey, groups]);
@@ -58,7 +58,7 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMap
                   { latitude: t.originLat as number, longitude: t.originLng as number },
                   { latitude: sel.lat, longitude: sel.lng },
                 ]}
-                strokeColor="#f97316"
+                strokeColor="#E8743B"
                 strokeWidth={4}
                 lineDashPattern={[10, 8]}
               />
@@ -85,7 +85,7 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMap
                     backgroundColor: "#fff",
                     borderRadius: 40,
                     borderWidth: selected ? 4 : 3,
-                    borderColor: selected ? "#f97316" : "#0a7ea4",
+                    borderColor: selected ? "#E8743B" : "#1F6B57",
                   }}
                 >
                   <Avatar name={g.first.firstName} photoUrl={g.first.photoUrl} size={selected ? 44 : 36} />
@@ -110,7 +110,7 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMap
                     <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>+{g.extra}</Text>
                   </View>
                 )}
-                <Text style={{ fontSize: 12, fontWeight: "700", color: selected ? "#c2410c" : "#334155", marginTop: 2 }} numberOfLines={1}>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: selected ? "#C2561F" : "#334155", marginTop: 2 }} numberOfLines={1}>
                   {g.label}
                 </Text>
               </View>

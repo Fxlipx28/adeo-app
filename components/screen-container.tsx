@@ -21,6 +21,8 @@ export interface ScreenContainerProps extends ViewProps {
    * Additional className for the SafeAreaView (content layer).
    */
   safeAreaClassName?: string;
+  /** Si es true, el contenido ocupa todo el ancho (mapa). Si no, se centra con ancho máximo en pantallas grandes. */
+  fullWidth?: boolean;
 }
 
 /**
@@ -44,6 +46,7 @@ export function ScreenContainer({
   className,
   containerClassName,
   safeAreaClassName,
+  fullWidth = false,
   style,
   ...props
 }: ScreenContainerProps) {
@@ -61,7 +64,12 @@ export function ScreenContainer({
         className={cn("flex-1", safeAreaClassName)}
         style={style}
       >
-        <View className={cn("flex-1", className)}>{children}</View>
+        <View
+          className={cn("flex-1", className)}
+          style={fullWidth ? undefined : { width: "100%", maxWidth: 720, alignSelf: "center" }}
+        >
+          {children}
+        </View>
       </SafeAreaView>
     </View>
   );

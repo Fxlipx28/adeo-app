@@ -1,6 +1,7 @@
 import { ScrollView, Text, TextInput, View, Pressable, ActivityIndicator, Alert, Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { isValidRut } from "@/shared/rut";
+import { BackBar } from "@/components/back-bar";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -89,6 +90,7 @@ export default function VerificationScreen() {
   if (verificationStatus.isLoading) {
     return (
       <ScreenContainer className="p-4">
+      <BackBar title="Verificar identidad" />
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -102,6 +104,7 @@ export default function VerificationScreen() {
 
   return (
     <ScreenContainer className="p-4">
+      <BackBar title="Verificar identidad" />
       <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
         {/* Header */}
         <View style={{ marginBottom: 24 }}>

@@ -1,6 +1,7 @@
 import { ActivityIndicator, Alert, ScrollView, Share, Text, View, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
+import { AppHeader } from "@/components/app-header";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -70,7 +71,7 @@ export default function MyTripsScreen() {
     <Pressable
       key={key}
       onPress={onPress}
-      style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 12 }}
+      style={{ backgroundColor: "#fff", borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 16, marginBottom: 12 }}
     >
       {children}
     </Pressable>
@@ -78,8 +79,8 @@ export default function MyTripsScreen() {
 
   if (!me.isLoading && !me.data) {
     return (
-      <ScreenContainer className="p-4">
-        <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "bold" }}>{t("myTrips")}</Text>
+      <ScreenContainer>
+        <AppHeader title={t("myTrips")} />
         <Text style={{ color: colors.muted, marginTop: 12 }}>{t("loginNeeded")}</Text>
       </ScreenContainer>
     );
@@ -89,11 +90,9 @@ export default function MyTripsScreen() {
   const empty = !bookings.data?.length && !published.data?.length;
 
   return (
-    <ScreenContainer className="p-4">
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}>
-        <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "bold", marginBottom: 16 }}>
-          {t("myTrips")}
-        </Text>
+    <ScreenContainer>
+      <AppHeader title={t("myTrips")} subtitle="Tus viajes como pasajero y como conductor" />
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 24, paddingHorizontal: 16 }}>
 
         {loading && <ActivityIndicator color={colors.primary} />}
         {!loading && empty && <Text style={{ color: colors.muted, textAlign: "center", marginTop: 32 }}>{t("none")}</Text>}

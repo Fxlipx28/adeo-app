@@ -1,6 +1,7 @@
 import { Alert, Linking, ScrollView, Text, TextInput, View, Pressable } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
+import { BackBar } from "@/components/back-bar";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -56,9 +57,7 @@ export default function SafetyScreen() {
     <ScreenContainer className="p-4">
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()} style={{ marginBottom: 12 }}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>← Volver</Text>
-        </Pressable>
+        <BackBar title="Seguridad y SOS" />
         <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "bold", marginBottom: 16 }}>
           {t("safety")}
         </Text>

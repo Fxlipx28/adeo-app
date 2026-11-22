@@ -1,6 +1,7 @@
 import { ActivityIndicator, Alert, ScrollView, Text, TextInput, View, Pressable } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
+import { BackBar } from "@/components/back-bar";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
@@ -158,9 +159,7 @@ export default function PublishScreen() {
     <ScreenContainer className="p-4">
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={() => router.back()} style={{ marginBottom: 12 }}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>← Volver</Text>
-        </Pressable>
+        <BackBar title="Publicar un viaje" />
         <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "bold", marginBottom: 12 }}>{t("publishTitle")}</Text>
 
         <View style={{ backgroundColor: "#e6f4f9", borderRadius: 14, padding: 14, marginBottom: 16 }}>
