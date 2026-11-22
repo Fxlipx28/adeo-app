@@ -13,7 +13,7 @@ import { CHILE_CENTER } from "./trip-map-types";
  */
 const LEAFLET_JS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
 const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-const TILE_URL = process.env.EXPO_PUBLIC_TILE_URL ?? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const TILE_URL = process.env.EXPO_PUBLIC_TILE_URL ?? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
 
 let leafletPromise: Promise<any> | null = null;
 function loadLeaflet(): Promise<any> {
@@ -86,7 +86,7 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380 }: TripMap
     loadLeaflet().then((L) => {
       if (cancelled || !el.current || mapRef.current) return;
       const map = L.map(el.current, { zoomControl: true, attributionControl: true }).setView([CHILE_CENTER.lat, CHILE_CENTER.lng], 6);
-      L.tileLayer(TILE_URL, { maxZoom: 19, subdomains: "abcd", attribution: "&copy; OpenStreetMap &copy; CARTO" }).addTo(map);
+      L.tileLayer(TILE_URL, { maxZoom: 19, attribution: "Tiles &copy; Esri" }).addTo(map);
       map.on("click", () => onSelectRef.current(null));
       layerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
