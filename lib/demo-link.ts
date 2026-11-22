@@ -38,14 +38,14 @@ const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").to
 
 /** Avatar de ejemplo (SVG en data-URI) para que los pines muestren "fotos". */
 const avatar = (_letter: string, bg: string) =>
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='96' height='96' fill='${bg}'/><circle cx='48' cy='38' r='17' fill='#fff' fill-opacity='.9'/><ellipse cx='48' cy='86' rx='30' ry='24' fill='#fff' fill-opacity='.9'/></svg>`,
+  "data:image/svg+xml;base64," +
+  btoa(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="${bg}"/><circle cx="48" cy="38" r="17" fill="#fff" fill-opacity=".9"/><ellipse cx="48" cy="86" rx="30" ry="24" fill="#fff" fill-opacity=".9"/></svg>`,
   );
 
 const DRIVERS: Record<number, { firstName: string; photoUrl: string | null; rating: number; totalTrips: number }> = {
   1: { firstName: "Felipe", photoUrl: null, rating: 5, totalTrips: 3 },
-  2: { firstName: "Carlos", photoUrl: avatar("C", "#0a7ea4"), rating: 4.9, totalTrips: 41 },
+  2: { firstName: "Carlos", photoUrl: avatar("C", "#1F6B57"), rating: 4.9, totalTrips: 41 },
   3: { firstName: "María", photoUrl: avatar("M", "#db2777"), rating: 4.8, totalTrips: 27 },
   4: { firstName: "Joaquín", photoUrl: avatar("J", "#16a34a"), rating: 4.9, totalTrips: 18 },
   5: { firstName: "Valentina", photoUrl: avatar("V", "#7c3aed"), rating: 4.8, totalTrips: 33 },
@@ -89,6 +89,38 @@ const trips: any[] = [
   seed(12, 7, "conce", "stgo", 3, "16:00", 3, 12500),
   seed(13, 2, "losandes", "stgo", 1, "18:00", 3, 2500),
 ];
+// Reglas de cada viaje de ejemplo (equipaje, mascotas, equipo deportivo, punto de encuentro)
+const PREFS: Record<number, any> = {
+  1: { luggage: "backpack", allowsPets: true, meetingPoint: "Metro Los Leones, salida Providencia" },
+  2: { luggage: "light", meetingPoint: "Terminal Alameda, andén principal" },
+  3: { luggage: "large", allowsGear: true, meetingPoint: "Servicentro Copec Américo Vespucio con Ruta 5 Sur" },
+  4: { luggage: "backpack", allowsGear: true, allowsPets: true, meetingPoint: "Mall Plaza Norte, estacionamiento principal" },
+  5: { luggage: "large", allowsGear: true, meetingPoint: "Metro Universidad de Santiago" },
+  11: { luggage: "large", allowsGear: true, allowsPets: true, meetingPoint: "Terminal Sur, entrada principal" },
+};
+trips.forEach((t) => Object.assign(t, { luggage: "backpack", allowsPets: false, allowsGear: false, meetingPoint: null }, PREFS[t.id]));
+
+const PASSENGERS: Record<number, { firstName: string; photoUrl: string | null; rating: number | null }> = {
+  21: { firstName: "Sofía", photoUrl: avatar("S", "#db2777"), rating: 4.9 },
+  22: { firstName: "Diego", photoUrl: avatar("D", "#0891b2"), rating: null },
+  23: { firstName: "Antonia", photoUrl: avatar("A", "#7c3aed"), rating: 5 },
+  24: { firstName: "Tomás", photoUrl: avatar("T", "#16a34a"), rating: 4.7 },
+};
+const reqSeed = (id: number, userId: number, o: string, d: string, day: number, seats: number, note: string) => {
+  const O = CITIES[o], D = CITIES[d];
+  return { id, userId, origin: O.name, destination: D.name, originLat: O.lat, originLng: O.lng, destLat: D.lat, destLng: D.lng, countryCode: "CL", travelDate: dayStr(day), seats, note, status: "open", createdAt: new Date(), updatedAt: new Date() };
+};
+const requests: any[] = [
+  reqSeed(1, 21, "stgo", "pucon", 6, 1, "Voy con mochila de trekking, puedo salir temprano."),
+  reqSeed(2, 22, "temuco", "stgo", 4, 2, "Somos dos amigos, flexibles con el horario."),
+  reqSeed(3, 23, "stgo", "serena", 5, 1, "Equipaje liviano."),
+  reqSeed(4, 24, "conce", "chillan", 2, 1, ""),
+];
+const withPassenger = (r: any) => {
+  const { userId, ...rest } = r;
+  return { ...rest, mine: userId === 1, passenger: PASSENGERS[userId] ?? { firstName: "Felipe", photoUrl: null, rating: 5 } };
+};
+
 const bookings: any[] = [];
 const me = { id: 1, openId: "demo", name: "Felipe López", email: "demo@adeo.app", loginMethod: "demo", role: "user", createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() };
 
@@ -122,11 +154,22 @@ function handle(path: string, input: any): unknown {
         originLat: input.originLat, originLng: input.originLng, destLat: input.destLat, destLng: input.destLng,
         countryCode: "CL", currency: "CLP", distanceKm: km, tollsAmount: input.tollsAmount ?? 0, description: input.description ?? "",
         status: "active", createdAt: new Date(), updatedAt: new Date(),
+        luggage: input.luggage ?? "backpack", allowsPets: !!input.allowsPets, allowsGear: !!input.allowsGear, meetingPoint: input.meetingPoint || null,
       });
       return { success: true, tripId: id };
     }
     case "trips.myTrips": return trips.filter((t) => t.driverId === 1);
     case "trips.cancel": { const t = trips.find((x) => x.id === input.tripId); if (t) t.status = "cancelled"; return { success: true }; }
+
+    case "requests.list": return requests.filter((r) => r.status === "open" && r.countryCode === (input?.countryCode ?? "CL")).map(withPassenger);
+    case "requests.mine": return requests.filter((r) => r.userId === 1 && r.status === "open");
+    case "requests.create": {
+      if (requests.filter((r) => r.userId === 1 && r.status === "open").length >= 3) err("Puedes tener hasta 3 búsquedas abiertas. Cancela una para crear otra.");
+      const id = nextId++;
+      requests.unshift({ id, userId: 1, ...input, note: input.note || "", status: "open", createdAt: new Date(), updatedAt: new Date() });
+      return { success: true, requestId: id };
+    }
+    case "requests.cancel": { const r = requests.find((x) => x.id === input.requestId); if (r) r.status = "cancelled"; return { success: true }; }
 
     case "bookings.create": {
       const t = trips.find((x) => x.id === input.tripId) ?? err("Viaje no encontrado");

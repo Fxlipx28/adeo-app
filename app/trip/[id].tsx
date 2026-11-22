@@ -1,6 +1,8 @@
 import { ActivityIndicator, Alert, ScrollView, Text, View, Pressable } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
+import { BackBar } from "@/components/back-bar";
+import { TripRules } from "@/components/trip-rules";
 import { ScreenContainer } from "@/components/screen-container";
 import { Avatar } from "@/components/avatar";
 import { StreetView } from "@/components/street-view";
@@ -73,9 +75,7 @@ export default function TripDetailScreen() {
     <ScreenContainer className="p-4">
       <Stack.Screen options={{ headerShown: false }} />
       <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-        <Pressable onPress={() => router.back()} style={{ marginBottom: 12 }}>
-          <Text style={{ color: colors.primary, fontSize: 16 }}>← Volver</Text>
-        </Pressable>
+        <BackBar title="Detalle del viaje" />
 
         <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "bold" }}>
           {data.origin} → {data.destination}
@@ -86,7 +86,7 @@ export default function TripDetailScreen() {
 
         <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 16 }}>
           {row(t("price"), `${formatMoney(data.pricePerSeat, data.countryCode)} ${t("perSeat")}`, true)}
-          {row(t("seats"), String(data.availableSeats))}
+          {row("Asientos disponibles", String(data.availableSeats))}
           {data.distanceKm > 0 && row("Distancia", `${data.distanceKm} km`)}
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
             <Avatar name={data.driver.firstName} photoUrl={data.driver.photoUrl} size={40} />
@@ -102,6 +102,8 @@ export default function TripDetailScreen() {
             <Text style={{ color: colors.muted, fontSize: 14, marginTop: 8 }}>{data.description}</Text>
           )}
         </View>
+
+        <TripRules trip={data} />
 
         <View
           style={{

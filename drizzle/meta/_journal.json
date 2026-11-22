@@ -36,6 +36,13 @@
       "when": 1795285153760,
       "tag": "0004_purple_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1795315692018,
+      "tag": "0005_ordinary_leo",
+      "breakpoints": true
     }
   ]
 }

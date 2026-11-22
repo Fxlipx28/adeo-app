@@ -138,6 +138,10 @@ export const tripsRouter = router({
         tollsAmount: z.number().int().min(0).default(0),
         countryCode: z.enum(COUNTRY_CODES as [string, ...string[]]).default("CL"),
         description: z.string().max(1000).optional(),
+        luggage: z.enum(["light", "backpack", "large"]).default("backpack"),
+        allowsPets: z.boolean().default(false),
+        allowsGear: z.boolean().default(false),
+        meetingPoint: z.string().trim().max(255).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -189,6 +193,10 @@ export const tripsRouter = router({
         countryCode: country.code,
         currency: country.currency,
         description: input.description,
+        luggage: input.luggage,
+        allowsPets: input.allowsPets,
+        allowsGear: input.allowsGear,
+        meetingPoint: input.meetingPoint || null,
         status: "active",
       });
 

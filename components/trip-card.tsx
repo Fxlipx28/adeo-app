@@ -3,9 +3,10 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Avatar } from "@/components/avatar";
 import { useColors } from "@/hooks/use-colors";
 import { t } from "@/lib/i18n";
+import { RuleChips, type TripRulesData } from "@/components/trip-rules";
 import { formatMoney } from "@/shared/countries";
 
-export interface TripCardData {
+export interface TripCardData extends TripRulesData {
   id: number;
   origin: string;
   destination: string;
@@ -68,6 +69,7 @@ export function TripCard({ trip, onPress }: { trip: TripCardData; onPress: () =>
           </Text>
         </View>
       </View>
+      <RuleChips trip={trip} />
     </Pressable>
   );
 }

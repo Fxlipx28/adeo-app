@@ -15,11 +15,10 @@ export interface TripMapProps {
 export const CHILE_CENTER = { lat: -34.2, lng: -71.0 };
 
 /**
- * Límites del mapa: Latinoamérica. Evita que al alejar se vea el mundo repetido.
- * [[sur, oeste], [norte, este]]
+ * Límites del mapa: el mundo completo, una sola vez (sin repetirse al alejar),
+ * igual que Google Maps. [[sur, oeste], [norte, este]]
  */
 export const MAP_BOUNDS: [[number, number], [number, number]] = [
-  [-58, -100],
-  [16, -30],
+  [-85, -180],
+  [85, 180],
 ];
-export const MAP_MIN_ZOOM = 4;

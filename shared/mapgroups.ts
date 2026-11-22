@@ -17,6 +17,7 @@ export interface MapTrip {
   destLat: number | null;
   destLng: number | null;
   availableSeats: number;
+  countryCode?: string;
   driver: MapDriver;
 }
 

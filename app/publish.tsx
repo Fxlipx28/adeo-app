@@ -7,74 +7,13 @@ import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { currentCountry, t } from "@/lib/i18n";
 import { formatMoney } from "@/shared/countries";
+import { PlaceField, type Picked } from "@/components/place-field";
 
-interface Picked {
-  name: string;
-  lat: number;
-  lng: number;
-}
-
-/** Campo de lugar: escribes, presionas Buscar y eliges un resultado del mapa (OpenStreetMap). */
-function PlaceField({ label, value, onPick, country }: { label: string; value: Picked | null; onPick: (p: Picked) => void; country: string }) {
-  const colors = useColors();
-  const utils = trpc.useUtils();
-  const [q, setQ] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [results, setResults] = useState<{ name: string; label: string; lat: number; lng: number }[]>([]);
-
-  const search = async () => {
-    if (q.trim().length < 3) return;
-    setBusy(true);
-    try {
-      setResults(await utils.places.search.fetch({ q: q.trim(), countryCode: country }));
-    } catch (e: any) {
-      Alert.alert(t("error"), e?.message ?? "No se pudo buscar");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <View style={{ marginBottom: 14 }}>
-      <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", marginBottom: 6 }}>{label.toUpperCase()}</Text>
-      {value && (
-        <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: 12, marginBottom: 8 }}>
-          <Text style={{ color: colors.foreground, fontWeight: "700" }}>📍 {value.name}</Text>
-        </View>
-      )}
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <TextInput
-          value={q}
-          onChangeText={setQ}
-          onSubmitEditing={search}
-          returnKeyType="search"
-          placeholder="Ej: Viña del Mar, Terminal Alameda…"
-          placeholderTextColor={colors.muted}
-          style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, color: colors.foreground }}
-        />
-        <Pressable onPress={search} style={{ backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 16, justifyContent: "center" }}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "600" }}>Buscar</Text>}
-        </Pressable>
-      </View>
-      {results.map((r, i) => (
-        <Pressable
-          key={`${r.lat},${r.lng},${i}`}
-          onPress={() => {
-            onPick({ name: r.name, lat: r.lat, lng: r.lng });
-            setResults([]);
-            setQ("");
-          }}
-          style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}
-        >
-          <Text style={{ color: colors.foreground, fontWeight: "600" }}>{r.name}</Text>
-          <Text style={{ color: colors.muted, fontSize: 12 }} numberOfLines={1}>
-            {r.label}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
+const LUGGAGE_OPTIONS = [
+  { value: "light", label: "Equipaje liviano" },
+  { value: "backpack", label: "Mochila OK" },
+  { value: "large", label: "Maletas grandes OK" },
+] as const;
 
 export default function PublishScreen() {
   const colors = useColors();
@@ -89,6 +28,10 @@ export default function PublishScreen() {
   const [seats, setSeats] = useState("3");
   const [price, setPrice] = useState("");
   const [notes, setNotes] = useState("");
+  const [luggage, setLuggage] = useState<"light" | "backpack" | "large">("backpack");
+  const [pets, setPets] = useState(false);
+  const [gear, setGear] = useState(false);
+  const [meeting, setMeeting] = useState("");
 
   const totalSeats = Math.min(8, Math.max(1, parseInt(seats, 10) || 1));
   const priceInt = parseInt(price, 10) || 0;
@@ -134,6 +77,23 @@ export default function PublishScreen() {
     </View>
   );
 
+  const toggle = (label: string, on: boolean, onPress: () => void) => (
+    <Pressable
+      key={label}
+      onPress={onPress}
+      style={{
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        borderRadius: 999,
+        backgroundColor: on ? colors.primary : colors.surface,
+        borderWidth: 1,
+        borderColor: on ? colors.primary : colors.border,
+      }}
+    >
+      <Text style={{ color: on ? "#fff" : colors.foreground, fontWeight: "700", fontSize: 13 }}>{label}</Text>
+    </Pressable>
+  );
+
   const submit = () => {
     if (!origin || !destination) return;
     publish.mutate({
@@ -150,6 +110,10 @@ export default function PublishScreen() {
       tollsAmount: tollsInt,
       countryCode: country,
       description: notes || undefined,
+      luggage,
+      allowsPets: pets,
+      allowsGear: gear,
+      meetingPoint: meeting.trim() || undefined,
     });
   };
 
@@ -162,9 +126,9 @@ export default function PublishScreen() {
         <BackBar title="Publicar un viaje" />
         <Text style={{ color: colors.foreground, fontSize: 24, fontWeight: "bold", marginBottom: 12 }}>{t("publishTitle")}</Text>
 
-        <View style={{ backgroundColor: "#e6f4f9", borderRadius: 14, padding: 14, marginBottom: 16 }}>
-          <Text style={{ color: "#0c4a5e", fontWeight: "600", marginBottom: 4 }}>{t("costShareTitle")}</Text>
-          <Text style={{ color: "#0c4a5e", fontSize: 13, lineHeight: 19 }}>{t("costShareBody")}</Text>
+        <View style={{ backgroundColor: "#E4F2EA", borderRadius: 14, padding: 14, marginBottom: 16 }}>
+          <Text style={{ color: "#1d5a3a", fontWeight: "600", marginBottom: 4 }}>{t("costShareTitle")}</Text>
+          <Text style={{ color: "#1d5a3a", fontSize: 13, lineHeight: 19 }}>{t("costShareBody")}</Text>
         </View>
 
         <PlaceField label={t("origin")} value={origin} onPick={setOrigin} country={country} />
@@ -190,6 +154,23 @@ export default function PublishScreen() {
         {input(t("pricePerSeat"), price, setPrice, { numeric: true })}
         {overCap && <Text style={{ color: colors.error, fontSize: 13, marginBottom: 8 }}>{t("overCap")}</Text>}
         {input(t("description"), notes, setNotes, { multiline: true })}
+
+        <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "800", marginTop: 8, marginBottom: 4 }}>Reglas del viaje</Text>
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 10 }}>
+          Los pasajeros ven esto antes de reservar. Ser claro evita sorpresas en el punto de encuentro.
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "600", marginBottom: 6 }}>EQUIPAJE</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {LUGGAGE_OPTIONS.map((o) => toggle(o.label, luggage === o.value, () => setLuggage(o.value)))}
+        </View>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {toggle("🐾 Acepto mascotas", pets, () => setPets(!pets))}
+          {toggle("🚲 Bici / tabla de surf", gear, () => setGear(!gear))}
+        </View>
+        {input("Punto de encuentro (opcional)", meeting, setMeeting, { placeholder: "Ej: Metro Los Leones, salida Providencia" })}
+        <Text style={{ color: colors.muted, fontSize: 12, marginTop: -6, marginBottom: 14 }}>
+          Elige un lugar público y con gente: terminal, metro, servicentro o mall. Evita calles solitarias o tu casa.
+        </Text>
 
         <Pressable
           onPress={submit}

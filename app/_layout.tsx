@@ -92,6 +92,7 @@ export default function RootLayout() {
             <Stack.Screen name="oauth/callback" />
             <Stack.Screen name="trip/[id]" />
             <Stack.Screen name="publish" />
+            <Stack.Screen name="request" />
             <Stack.Screen name="safety" />
             <Stack.Screen name="settings" />
             <Stack.Screen name="verification" />

@@ -16,6 +16,14 @@ export default function MyTripsScreen() {
   const me = trpc.auth.me.useQuery();
   const bookings = trpc.bookings.myBookings.useQuery(undefined, { enabled: !!me.data });
   const published = trpc.trips.myTrips.useQuery(undefined, { enabled: !!me.data });
+  const myRequests = trpc.requests.mine.useQuery(undefined, { enabled: !!me.data });
+  const cancelRequest = trpc.requests.cancel.useMutation({
+    onSuccess: () => {
+      utils.requests.mine.invalidate();
+      utils.requests.list.invalidate();
+    },
+    onError: (e) => Alert.alert(t("error"), e.message),
+  });
 
   const cancelBooking = trpc.bookings.cancel.useMutation({
     onSuccess: () => {
@@ -87,7 +95,7 @@ export default function MyTripsScreen() {
   }
 
   const loading = me.isLoading || bookings.isLoading || published.isLoading;
-  const empty = !bookings.data?.length && !published.data?.length;
+  const empty = !bookings.data?.length && !published.data?.length && !myRequests.data?.length;
 
   return (
     <ScreenContainer>
@@ -96,6 +104,26 @@ export default function MyTripsScreen() {
 
         {loading && <ActivityIndicator color={colors.primary} />}
         {!loading && empty && <Text style={{ color: colors.muted, textAlign: "center", marginTop: 32 }}>{t("none")}</Text>}
+
+        {!!myRequests.data?.length && (
+          <>
+            <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "600", marginBottom: 8 }}>Mis búsquedas (busco viaje)</Text>
+            {myRequests.data.map((r) =>
+              card(
+                `r${r.id}`,
+                <>
+                  <Text style={{ color: colors.foreground, fontSize: 16, fontWeight: "600" }}>
+                    {r.origin} → {r.destination}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 14, marginVertical: 6 }}>
+                    {r.travelDate} · {r.seats} {r.seats === 1 ? "persona" : "personas"}
+                  </Text>
+                  <View style={{ flexDirection: "row" }}>{btn(t("cancel"), () => cancelRequest.mutate({ requestId: r.id }), true)}</View>
+                </>,
+              ),
+            )}
+          </>
+        )}
 
         {!!bookings.data?.length && (
           <>

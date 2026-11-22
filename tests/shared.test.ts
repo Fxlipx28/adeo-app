@@ -99,3 +99,45 @@ describe("Agrupar viajes por destino (mapa)", () => {
     expect(groups.map((g) => g.extra)).toEqual([0, 0]);
   });
 });
+
+import { clusterGroups } from "../shared/cluster";
+
+describe("clusterGroups (agrupar pines por zoom)", () => {
+  const mk = (id: number, dest: string, lat: number, lng: number, cc = "CL") => ({
+    id, origin: "X", destination: dest, originLat: null, originLng: null,
+    destLat: lat, destLng: lng, availableSeats: 2, countryCode: cc,
+    driver: { firstName: `D${id}`, photoUrl: null },
+  });
+  const groups = groupByDestination([
+    mk(1, "Santiago", -33.45, -70.67),
+    mk(2, "Viña del Mar", -33.02, -71.55),
+    mk(3, "Santiago", -33.45, -70.67),
+    mk(4, "Temuco", -38.74, -72.59),
+    mk(5, "Ciudad de México", 19.43, -99.13, "MX"),
+  ]);
+
+  it("lejos: junta por país; el primer conductor es el del viaje más antiguo", () => {
+    const c = clusterGroups(groups, 2);
+    const cl = c.find((x) => x.countryCode === "CL")!;
+    expect(cl.total).toBe(4);
+    expect(cl.extra).toBe(3);
+    expect(cl.first.firstName).toBe("D1");
+  });
+
+  it("cerca: cada destino queda separado", () => {
+    const c = clusterGroups(groups, 12);
+    expect(c.length).toBe(groups.length);
+  });
+
+  it("zoom medio: Santiago y Viña se juntan pero Temuco no", () => {
+    const c = clusterGroups(groups, 6);
+    expect(c.some((x) => x.groups.length >= 2)).toBe(true);
+    expect(c.find((x) => x.groups.some((g) => g.label === "Temuco"))!.groups.length).toBe(1);
+  });
+
+  it("el grupo seleccionado nunca se funde con otros", () => {
+    const sel = groups.find((g) => g.label === "Santiago")!.key;
+    const c = clusterGroups(groups, 2, { keepSeparate: sel });
+    expect(c.find((x) => x.key === sel)!.groups.length).toBe(1);
+  });
+});

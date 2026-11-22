@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { Avatar } from "./avatar";
+import { clusterGroups } from "@/shared/cluster";
+import { getCountry } from "@/shared/countries";
 import { CHILE_CENTER, type TripMapProps } from "./trip-map-types";
 
 /**
@@ -13,14 +15,16 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
   const ref = useRef<MapView | null>(null);
   const fitted = useRef(false);
   // Los pines con imágenes necesitan "tracksViewChanges" un momento para renderizarse
+  const [zoom, setZoom] = useState(6);
   const [track, setTrack] = useState(true);
   useEffect(() => {
     setTrack(true);
     const t = setTimeout(() => setTrack(false), 1200);
     return () => clearTimeout(t);
-  }, [groups, selectedKey]);
+  }, [groups, selectedKey, Math.round(zoom)]);
 
   const sel = groups.find((g) => g.key === selectedKey) ?? null;
+  const clusters = clusterGroups(groups, zoom, { keepSeparate: selectedKey });
 
   useEffect(() => {
     if (sel) {
@@ -45,6 +49,7 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
         style={{ flex: 1 }}
         initialRegion={{ latitude: CHILE_CENTER.lat, longitude: CHILE_CENTER.lng, latitudeDelta: 8, longitudeDelta: 8 }}
         onPress={() => onSelect(null)}
+        onRegionChangeComplete={(r) => setZoom(Math.max(1, Math.log2(360 / r.longitudeDelta)))}
         showsUserLocation={false}
         toolbarEnabled={false}
       >
@@ -64,15 +69,22 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
               />
             ))}
 
-        {groups.map((g) => {
-          const selected = g.key === selectedKey;
+        {clusters.map((c) => {
+          const merged = c.groups.length > 1;
+          const selected = !merged && c.key === selectedKey;
+          const label = !merged ? c.groups[0].label : c.countryCode && zoom <= 4 ? getCountry(c.countryCode).name : `${c.groups.length} destinos`;
           return (
             <Marker
-              key={g.key}
-              coordinate={{ latitude: g.lat, longitude: g.lng }}
+              key={c.key}
+              coordinate={{ latitude: c.lat, longitude: c.lng }}
               onPress={(e) => {
                 e.stopPropagation?.();
-                onSelect(g.key);
+                if (!merged) onSelect(c.groups[0].key);
+                else
+                  ref.current?.fitToCoordinates(
+                    c.groups.map((g) => ({ latitude: g.lat, longitude: g.lng })),
+                    { edgePadding: { top: 110, right: 80, bottom: 80 + bottomInset, left: 80 }, animated: true },
+                  );
               }}
               tracksViewChanges={track}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -88,9 +100,9 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
                     borderColor: selected ? "#E8743B" : "#1F6B57",
                   }}
                 >
-                  <Avatar name={g.first.firstName} photoUrl={g.first.photoUrl} size={selected ? 44 : 36} />
+                  <Avatar name={c.first.firstName} photoUrl={c.first.photoUrl} size={selected ? 44 : 36} />
                 </View>
-                {g.extra > 0 && (
+                {c.extra > 0 && (
                   <View
                     style={{
                       position: "absolute",
@@ -107,11 +119,11 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
                       justifyContent: "center",
                     }}
                   >
-                    <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>+{g.extra}</Text>
+                    <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>+{c.extra}</Text>
                   </View>
                 )}
                 <Text style={{ fontSize: 12, fontWeight: "700", color: selected ? "#C2561F" : "#334155", marginTop: 2 }} numberOfLines={1}>
-                  {g.label}
+                  {label}
                 </Text>
               </View>
             </Marker>

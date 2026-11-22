@@ -1,4 +1,5 @@
-import { ActivityIndicator, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { useIsDesktop } from "@/hooks/use-desktop";
 import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,8 +19,7 @@ export default function HomeScreen() {
   const colors = useColors();
   const router = useRouter();
   const country = currentCountry();
-  const { width } = useWindowDimensions();
-  const desktop = width >= 900;
+  const desktop = useIsDesktop();
   const insets = useSafeAreaInsets();
   const topPad = insets.top;
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -93,6 +93,7 @@ export default function HomeScreen() {
       style={{ position: "absolute", top: 12 + topPad, left: 14, right: 14, zIndex: 30, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}
     >
       <View style={{ alignItems: "flex-start" }}>
+        {!desktop && (
         <View
           style={{
             flexDirection: "row",
@@ -114,6 +115,7 @@ export default function HomeScreen() {
           </View>
           <Text style={{ color: colors.foreground, fontSize: 18, fontWeight: "800", marginLeft: 8, letterSpacing: -0.4 }}>Adeo</Text>
         </View>
+        )}
         {IS_DEMO && (
           <View style={{ backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8 }}>
             <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>DEMO · datos de ejemplo</Text>

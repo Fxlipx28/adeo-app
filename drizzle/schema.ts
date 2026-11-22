@@ -1,4 +1,4 @@
-import { double, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, double, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -48,6 +48,11 @@ export const trips = mysqlTable("trips", {
   distanceKm: int("distanceKm").default(0).notNull(), // Base del tope de costo compartido
   tollsAmount: int("tollsAmount").default(0).notNull(), // Peajes del trayecto
   description: text("description"),
+  // Reglas del viaje (lo que el pasajero necesita saber antes de reservar)
+  luggage: mysqlEnum("luggage", ["light", "backpack", "large"]).default("backpack").notNull(), // equipaje permitido
+  allowsPets: boolean("allowsPets").default(false).notNull(),
+  allowsGear: boolean("allowsGear").default(false).notNull(), // bicicleta, tabla de surf, esquís…
+  meetingPoint: varchar("meetingPoint", { length: 255 }), // punto de encuentro (lugar público recomendado)
   status: mysqlEnum("status", ["active", "completed", "cancelled"]).default("active").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -252,3 +257,28 @@ export const supportTickets = mysqlTable("supportTickets", {
 
 export type SupportTicket = typeof supportTickets.$inferSelect;
 export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+
+
+/**
+ * Ride requests - "Busco viaje": el pasajero publica la ruta que necesita y los
+ * conductores que van para allá lo ven (el "hacer dedo" digital, pero planificado).
+ */
+export const rideRequests = mysqlTable("rideRequests", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  origin: varchar("origin", { length: 255 }).notNull(),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  originLat: double("originLat"),
+  originLng: double("originLng"),
+  destLat: double("destLat"),
+  destLng: double("destLng"),
+  countryCode: varchar("countryCode", { length: 2 }).default("CL").notNull(),
+  travelDate: varchar("travelDate", { length: 10 }).notNull(), // YYYY-MM-DD
+  seats: int("seats").default(1).notNull(),
+  note: varchar("note", { length: 500 }),
+  status: mysqlEnum("status", ["open", "cancelled"]).default("open").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type RideRequest = typeof rideRequests.$inferSelect;

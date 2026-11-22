@@ -1,7 +1,9 @@
 import { useEffect, useRef } from "react";
 import { createElement } from "react";
 import type { TripMapProps } from "./trip-map-types";
-import { CHILE_CENTER, MAP_BOUNDS, MAP_MIN_ZOOM } from "./trip-map-types";
+import { CHILE_CENTER, MAP_BOUNDS } from "./trip-map-types";
+import { clusterGroups } from "@/shared/cluster";
+import { getCountry } from "@/shared/countries";
 
 /**
  * Mapa interactivo (web) con Leaflet + OpenStreetMap: zoom con rueda/pellizco,
@@ -75,6 +77,11 @@ function buildPin(opts: { name: string; photoUrl: string | null; extra: number; 
   return root;
 }
 
+/** Zoom mínimo para que el mundo llene la pantalla sin repetirse (como Google Maps). */
+function minZoomFor(w: number, h: number) {
+  return Math.max(2, Math.ceil(Math.log2(Math.max(w, h, 256) / 256)));
+}
+
 export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomInset = 0 }: TripMapProps) {
   const el = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
@@ -84,6 +91,56 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
   onSelectRef.current = onSelect;
   const insetRef = useRef(bottomInset);
   insetRef.current = bottomInset;
+  const dataRef = useRef({ groups, selectedKey });
+  dataRef.current = { groups, selectedKey };
+
+  // Dibuja pines/rutas según el zoom actual (agrupa los cercanos en un solo pin)
+  const render = () => {
+    const L = (window as any).L;
+    const map = mapRef.current;
+    const layer = layerRef.current;
+    if (!L || !map || !layer) return;
+    const { groups: gs, selectedKey: selKey } = dataRef.current;
+    layer.clearLayers();
+
+    const sel = gs.find((g) => g.key === selKey) ?? null;
+    if (sel) {
+      for (const t of sel.trips) {
+        if (t.originLat == null || t.originLng == null) continue;
+        L.polyline([[t.originLat, t.originLng], [sel.lat, sel.lng]], { color: "#E8743B", weight: 4, opacity: 0.7, dashArray: "8 8" }).addTo(layer);
+        L.circleMarker([t.originLat, t.originLng], { radius: 6, color: "#fff", weight: 2, fillColor: "#1F6B57", fillOpacity: 1 }).addTo(layer);
+      }
+    }
+
+    for (const c of clusterGroups(gs, map.getZoom(), { keepSeparate: selKey })) {
+      const merged = c.groups.length > 1;
+      const selected = !merged && c.key === selKey;
+      const label = !merged
+        ? c.groups[0].label
+        : c.countryCode && map.getZoom() <= 4
+          ? getCountry(c.countryCode).name
+          : `${c.groups.length} destinos`;
+      const icon = L.divIcon({
+        className: "",
+        html: buildPin({ name: c.first.firstName, photoUrl: c.first.photoUrl, extra: c.extra, selected, label }),
+        iconSize: [0, 0],
+        iconAnchor: [selected ? 28 : 23, selected ? 28 : 23],
+      });
+      const m = L.marker([c.lat, c.lng], { icon, zIndexOffset: selected ? 1000 : 0 }).addTo(layer);
+      m.on("click", (e: any) => {
+        L.DomEvent.stopPropagation(e);
+        if (!merged) {
+          onSelectRef.current(c.groups[0].key);
+        } else {
+          // Pin agrupado: acercar para separar los destinos
+          const pts = c.groups.map((g) => [g.lat, g.lng]);
+          map.flyToBounds(L.latLngBounds(pts), { padding: [80, 80], maxZoom: 12, duration: 0.6 });
+        }
+      });
+    }
+  };
+  const renderRef = useRef(render);
+  renderRef.current = render;
 
   // Crear el mapa una sola vez
   useEffect(() => {
@@ -91,10 +148,11 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
     loadLeaflet().then((L) => {
       if (cancelled || !el.current || mapRef.current) return;
       const wide = window.innerWidth >= 900;
+      const rect = el.current.getBoundingClientRect();
       const map = L.map(el.current, {
         zoomControl: wide, // en el teléfono se hace zoom con los dedos
         attributionControl: true,
-        minZoom: MAP_MIN_ZOOM,
+        minZoom: minZoomFor(rect.width, rect.height),
         maxZoom: 18,
         maxBounds: MAP_BOUNDS,
         maxBoundsViscosity: 1.0,
@@ -102,30 +160,21 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
       }).setView([CHILE_CENTER.lat, CHILE_CENTER.lng], 6);
       if (wide) map.zoomControl.setPosition("bottomright");
       map.attributionControl.setPrefix(false);
-      // Al alejar: pines más chicos y sin nombres, para que no se amontonen
-      if (!document.getElementById("adeo-map-css")) {
-        const st = document.createElement("style");
-        st.id = "adeo-map-css";
-        st.textContent = ".adeo-far .adeo-lbl{display:none}.adeo-far .adeo-pin{transform:scale(.72)}.adeo-pin{transition:transform .15s}";
-        document.head.appendChild(st);
-      }
-      const updateFar = () => el.current?.classList.toggle("adeo-far", map.getZoom() < 7);
-      map.on("zoomend", updateFar);
-      updateFar();
       L.tileLayer(TILE_URL, { maxZoom: 18, noWrap: true, bounds: MAP_BOUNDS, attribution: "Tiles &copy; Esri" }).addTo(map);
       map.on("click", () => onSelectRef.current(null));
+      map.on("zoomend", () => renderRef.current());
       layerRef.current = L.layerGroup().addTo(map);
       mapRef.current = map;
-      // Recalcular tamaño cuando el contenedor cambie (evita que el mapa quede con zoom mínimo)
       if (typeof ResizeObserver !== "undefined" && el.current) {
         new ResizeObserver(() => {
           map.invalidateSize();
-          // Nunca permitir alejarse más de lo necesario para llenar la pantalla con el mapa
-          map.setMinZoom(Math.max(MAP_MIN_ZOOM, map.getBoundsZoom(MAP_BOUNDS, true)));
+          // El mundo siempre llena la pantalla: nunca se ve el mapa repetido ni vacío
+          const r = el.current!.getBoundingClientRect();
+          map.setMinZoom(minZoomFor(r.width, r.height));
         }).observe(el.current);
       }
       setTimeout(() => map.invalidateSize(), 100);
-      (window as any).__adeoRedraw?.();
+      (window as any).__adeoReady?.();
     });
     return () => {
       cancelled = true;
@@ -134,50 +183,26 @@ export function TripMap({ groups, selectedKey, onSelect, height = 380, bottomIns
     };
   }, []);
 
-  // Dibujar pines y rutas cuando cambian los datos
+  // Dibujar y mover la cámara cuando cambian los datos
   useEffect(() => {
-    const draw = () => {
+    const run = () => {
       const L = (window as any).L;
       const map = mapRef.current;
-      const layer = layerRef.current;
-      if (!L || !map || !layer) return;
+      if (!L || !map) return;
       map.invalidateSize();
-      layer.clearLayers();
-
+      renderRef.current();
       const sel = groups.find((g) => g.key === selectedKey) ?? null;
-      if (sel) {
-        for (const t of sel.trips) {
-          if (t.originLat == null || t.originLng == null) continue;
-          L.polyline([[t.originLat, t.originLng], [sel.lat, sel.lng]], { color: "#E8743B", weight: 4, opacity: 0.7, dashArray: "8 8" }).addTo(layer);
-          L.circleMarker([t.originLat, t.originLng], { radius: 6, color: "#fff", weight: 2, fillColor: "#1F6B57", fillOpacity: 1 }).addTo(layer);
-        }
-      }
-
-      for (const g of groups) {
-        const selected = g.key === selectedKey;
-        const icon = L.divIcon({
-          className: "",
-          html: buildPin({ name: g.first.firstName, photoUrl: g.first.photoUrl, extra: g.extra, selected, label: g.label }),
-          iconSize: [0, 0],
-          iconAnchor: [selected ? 28 : 23, selected ? 28 : 23],
-        });
-        const m = L.marker([g.lat, g.lng], { icon, zIndexOffset: selected ? 1000 : 0 }).addTo(layer);
-        m.on("click", (e: any) => {
-          L.DomEvent.stopPropagation(e);
-          onSelectRef.current(g.key);
-        });
-      }
-
+      const pad = { paddingTopLeft: [50, 110], paddingBottomRight: [50, 50 + insetRef.current] };
       if (sel) {
         const pts = [[sel.lat, sel.lng], ...sel.trips.filter((t) => t.originLat != null).map((t) => [t.originLat, t.originLng])];
-        map.flyToBounds(L.latLngBounds(pts), { paddingTopLeft: [50, 110], paddingBottomRight: [50, 50 + insetRef.current], maxZoom: 11, duration: 0.6 });
+        map.flyToBounds(L.latLngBounds(pts), { ...pad, maxZoom: 11, duration: 0.6 });
       } else if (!fittedRef.current && groups.length > 0) {
         fittedRef.current = true;
-        map.fitBounds(L.latLngBounds(groups.map((g) => [g.lat, g.lng])), { paddingTopLeft: [50, 110], paddingBottomRight: [50, 50 + insetRef.current], maxZoom: 9 });
+        map.fitBounds(L.latLngBounds(groups.map((g) => [g.lat, g.lng])), { ...pad, maxZoom: 9 });
       }
     };
-    (window as any).__adeoRedraw = draw;
-    draw();
+    (window as any).__adeoReady = run;
+    run();
   }, [groups, selectedKey]);
 
   return createElement("div", { ref: el, style: { width: "100%", height, background: "#e7e3d6", position: "relative", zIndex: 0, isolation: "isolate" } });
