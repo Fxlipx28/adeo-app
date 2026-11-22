@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScreenContainer } from "@/components/screen-container";
 import { Avatar } from "@/components/avatar";
+import { StreetView } from "@/components/street-view";
 import { useColors } from "@/hooks/use-colors";
 import { trpc } from "@/lib/trpc";
 import { t } from "@/lib/i18n";
@@ -115,6 +116,15 @@ export default function TripDetailScreen() {
           <Text style={{ color: colors.foreground, fontWeight: "600", marginBottom: 4 }}>{t("costShareTitle")}</Text>
           <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>{t("costShareBody")}</Text>
         </View>
+
+        {data.originLat != null && data.originLng != null && (
+          <StreetView lat={data.originLat} lng={data.originLng} title={`Punto de salida · ${data.origin}`} />
+        )}
+        {data.destLat != null && data.destLng != null && (
+          <View style={{ marginBottom: 6 }}>
+            <StreetView lat={data.destLat} lng={data.destLng} title={`Destino · ${data.destination}`} />
+          </View>
+        )}
 
         {canBook && (
           <>
